@@ -269,6 +269,8 @@ inline bool is_order_function(const ex & e)
  */
 ex convert_H_to_Li(const ex& parameterlst, const ex& arg);
 
+bool hyperg_integration_rules(ex& res, const ex& e, const ex& xe);
+
 } // namespace GiNaC
 
 #endif // ndef __GINAC_INIFCNS_H__

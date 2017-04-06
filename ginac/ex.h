@@ -152,6 +152,7 @@ public:
         bool get_first_symbol(ex &x) const;
         symbolset symbols() const;
         symbolset free_symbols() const;
+        std::unordered_set<unsigned> functions() const;
 	const ex op(size_t i) const { return bp->op(i); }
 	ex sorted_op(size_t i) const;
 	ex operator[](const ex & index) const { return (*bp)[index]; }
@@ -235,6 +236,7 @@ public:
 	numeric max_coefficient() const;
         bool is_linear(const symbol& x, ex& a, ex& b) const;
         bool is_quadratic(const symbol& x, ex& a, ex& b, ex& c) const;
+        bool is_binomial(const symbol& x, ex& a, ex& j, ex& b, ex& n) const;
 
 	// indexed objects
 	exvector get_free_indices() const { return bp->get_free_indices(); }
