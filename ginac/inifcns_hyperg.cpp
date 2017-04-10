@@ -222,8 +222,8 @@ static ex replace_integrals(bool& ret, const ex& the_ex, const ex& x)
 // bc-ad == 0 is already handled
 static ex rubi112H(ex a, ex b, ex m, ex c, ex d, ex n, ex x)
 {
-std::cerr<<m.info(info_flags::integer)<<","<<n.info(info_flags::integer)<<","<<a<<","<<b<<","<<m<<","<<c<<","<<d<<","<<n<<std::endl;
-        if (a.is_zero()) {
+//std::cerr<<m.info(info_flags::integer)<<","<<n.info(info_flags::integer)<<","<<a<<","<<b<<","<<m<<","<<c<<","<<d<<","<<n<<std::endl;
+        if (c.is_zero()) {
                 a.swap(c);
                 b.swap(d);
                 m.swap(n);
@@ -233,27 +233,31 @@ std::cerr<<m.info(info_flags::integer)<<","<<n.info(info_flags::integer)<<","<<a
 //             or not is_exactly_a<numeric>(m))
 //            and (not n.info(info_flags::integer)
 //             or not is_exactly_a<numeric>(n)))
-        if (not n.info(info_flags::integer)) {
-                if (m.is_equal(_ex_1)) {
-                        if (a.is_zero())
-                                return -power(c+d*x,n+1)/b/c/(n+1) * _2F1(_ex1, n+1, n+2, d*x/c+1);
-                        return -power(c+d*x,n+1)/(b*c-a*d)/(n+1) * _2F1(_ex1, n+1, n+2, (b*(c+d*x)/(b*c-a*d)).normal());
-                }
-                if (a.is_zero()
-                    and (m.info(info_flags::integer)
-                    or (-d/b/c).info(info_flags::positive)))
+        if (a.is_zero()) {
+                if (m.is_equal(_ex_1))
+                        return -power(c+d*x,n+1)/b/c/(n+1) * _2F1(_ex1, n+1, n+2, d*x/c+1);
+                if (m.info(info_flags::integer))
+//                    or (-d/b/c).info(info_flags::positive))
+//                    wrong for x^m / sqrt(2-3x)
                         return power(c+d*x,n+1)/d/(n+1)/power(-d/b/c,m) * _2F1(-m, n+1, n+2, _ex1+d*x/c);
+                if (n.info(info_flags::integer)
+                    or (c.info(info_flags::positive)
+                        and not ((n+_ex1_2).is_zero()
+                                and (c*c-d*d).is_zero()
+                                and (-d/b/c).info(info_flags::positive))))
+                        return power(c,n)*power(b*x,m+1)/b/(m+1) * _2F1(-n, m+1, m+2, -d*x/c);
+                else
+                        return power(-b*c/d,m) * power(c+d*x,n+1) / d / (n+1) * _2F1(-m, n+1, n+2, d/c*x+1);
         }
-        if (not m.info(info_flags::integer)) {
-                if (n.is_equal(_ex_1)) {
-                        if (c.is_zero())
-                                return -power(a+b*x,m+1)/a/d/(m+1) * _2F1(_ex1, m+1, m+2, b*x/a+1);
+        if (not n.info(info_flags::integer)
+            and m.info(info_flags::integer)) {
+                if (n.is_equal(_ex_1))
+                        return -power(c+d*x,n+1)/(b*c-a*d)/(n+1) * _2F1(_ex1, n+1, n+2, (b*(c+d*x)/(b*c-a*d)).normal());
+        }
+        if (not m.info(info_flags::integer)
+            and n.info(info_flags::integer)) {
+                if (n.is_equal(_ex_1))
                         return -power(a+b*x,m+1)/(a*d-b*c)/(m+1) * _2F1(_ex1, m+1, m+2, (d*(a+b*x)/(a*d-b*c)).normal());
-                }
-                if (c.is_zero()
-                    and (n.info(info_flags::integer)
-                    or (-b/d/a).info(info_flags::positive)))
-                        return power(a+b*x,m+1)/b/(m+1)/power(-b/d/a,n) * _2F1(-n, m+1, m+2, _ex1+b*x/a);
         }
         return power(-b*c+a*d,m) * power(c+d*x,n+1) / power(d,m+1) / (n+1) * _2F1(-m, n+1, n+2, -b*(c+d*x)/(-b*c+a*d));
         throw rubi_exception();
