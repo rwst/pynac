@@ -159,9 +159,6 @@ PKG_CHECK_MODULES([FACTORY], [factory],[
     AC_SUBST(FACTORY_LIBS)],
     [AC_MSG_ERROR([This package needs libfactory])])
 
-dnl Find boost, get version, set linked to libraries
-AX_BOOST_BASE([1.61], [AC_SUBST([LIBBOOST], ["-lboost_coroutine -lboost_thread -lboost_context -lboost_chrono -lboost_system"])], [AC_MSG_ERROR([This package needs Boost libraries])])
-
 dnl Check for utilities needed by the different kinds of documentation.
 dnl Documentation needs only be built when extending it, so never mind if it
 dnl cannot find those helpers:

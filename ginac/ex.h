@@ -180,8 +180,6 @@ public:
 	bool match(const ex & pattern, exmap& map) const;
 	bool match(const ex & pattern, exvector& vec) const;
 	bool cmatch(const ex & pattern, exmap& map) const;
-	bool cmatch(const ex & pattern, exmap& map, exmap_sink_t& sink) const
-            { return bp->cmatch(pattern, map, sink); }
         bool cmatch(const ex & pattern, exvector& vec) const;
 
 	// substitutions

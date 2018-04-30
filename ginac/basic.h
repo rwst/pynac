@@ -38,10 +38,6 @@
 #include "registrar.h"
 #include "context.h"
 
-#define BOOST_DISABLE_ASSERTS 1
-#define BOOST_SYSTEM_NO_DEPRECATED 1
-#include <boost/coroutine/asymmetric_coroutine.hpp>
-
 // PyObject forward declaration 
 #ifndef PyObject_HEAD
 struct _object;
@@ -76,8 +72,6 @@ typedef std::vector<ex> exvector;
 typedef std::set<ex, ex_is_less> exset;
 typedef std::map<ex, ex, ex_is_less> exmap;
 using ex_int_map = std::map<GiNaC::ex, int, GiNaC::ex_is_less>;
-using exmap_sink_t = boost::coroutines::asymmetric_coroutine<exmap>::push_type;
-using exmap_corot_t = boost::coroutines::asymmetric_coroutine<exmap>::pull_type;
 // Define this to enable some statistical output for comparisons and hashing
 #undef GINAC_COMPARE_STATISTICS
 
@@ -213,7 +207,7 @@ public:
 	// pattern matching
 	virtual bool has(const ex & other, unsigned options = 0) const;
 	virtual bool match(const ex & pattern, exmap& map) const;
-	virtual bool cmatch(const ex & pattern, exmap& map, exmap_sink_t& sink) const;
+	virtual bool cmatch(const ex & pattern, exmap& map) const;
 	virtual bool match_same_type(const basic & other) const;
 
 	virtual void do_print(const print_context & c, unsigned level) const;

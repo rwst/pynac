@@ -20,6 +20,11 @@
         "file": "/home/ralf/sage/pynac/ginac/useries.cpp"
     }, 
     {
+        "command": "clang++ -c -DHAVE_CONFIG_H -I/home/ralf/sage/pynac/ginac -I/home/ralf/sage/pynac -DGCC_INSTALL_PREFIX=/home/ralf/sage/local/lib/gcc/x86_64-pc-linux-gnu/7.2.0/ -I/home/ralf/sage/local/include -I/home/ralf/sage/local/include/python2.7 -Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wno-unused-parameter -g -O2 -std=c++11 -stdlib=libc++ -o libpynac_la-rubi1.o /home/ralf/sage/pynac/ginac/rubi1.cpp", 
+        "directory": "/home/ralf/sage/pynac/ginac", 
+        "file": "/home/ralf/sage/pynac/ginac/rubi1.cpp"
+    }, 
+    {
         "command": "clang++ -c -DHAVE_CONFIG_H -I/home/ralf/sage/pynac/ginac -I/home/ralf/sage/pynac -DGCC_INSTALL_PREFIX=/home/ralf/sage/local/lib/gcc/x86_64-pc-linux-gnu/7.2.0/ -I/home/ralf/sage/local/include -I/home/ralf/sage/local/include/python2.7 -Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wno-unused-parameter -g -O2 -std=c++11 -stdlib=libc++ -o libpynac_la-ex.o /home/ralf/sage/pynac/ginac/ex.cpp", 
         "directory": "/home/ralf/sage/pynac/ginac", 
         "file": "/home/ralf/sage/pynac/ginac/ex.cpp"

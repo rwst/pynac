@@ -136,17 +136,7 @@ bool ex::match(const ex & pattern, exvector& vec) const
 
 bool ex::cmatch(const ex & pattern, exmap& map) const
 {
-        if (not is_a<expairseq>(*this))
-                return bp->match(pattern, map);
-        exmap_corot_t source(
-            [&](exmap_sink_t& sink) {
-                (void)this->cmatch(pattern, map, sink);
-            });
-        if (source) {
-                map = source.get();
-                return true;
-        }
-        return false;
+        return bp->cmatch(pattern, map);
 }
 
 bool ex::cmatch(const ex & pattern, exvector& vec) const
@@ -155,12 +145,21 @@ bool ex::cmatch(const ex & pattern, exvector& vec) const
         bool ret = this->cmatch(pattern, map);
         if (not ret)
                 return ret;
-        vec.resize(map.size());
+        unsigned maxl = 0;
         for (const auto& pair : map) {
                 if (not is_exactly_a<wildcard>(pair.first))
                         throw std::runtime_error("no wildcard");
-                vec[ex_to<wildcard>(pair.first).get_label()] = pair.second;
+                unsigned l = ex_to<wildcard>(pair.first).get_label();
+                if (maxl < l)
+                        maxl = l;
         }
+        ex nan = NaN;
+        exvector tvec(maxl+1);
+        tvec.assign(maxl+1, nan);
+        for (const auto& pair : map) {
+                tvec[ex_to<wildcard>(pair.first).get_label()] = pair.second;
+        }
+        vec = tvec;
         return ret;
 }
 

@@ -20,7 +20,6 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include <Python.h>
 #include "py_funcs.h"
 #include "power.h"
 #include "expairseq.h"
@@ -37,7 +36,8 @@
 #include "utils.h"
 #include "relational.h"
 #include "compiler.h"
-//#include "function.h"
+#include "cmatcher.h"
+#include "wildcard.h"
 
 #include <vector>
 #include <stdexcept>
@@ -702,6 +702,32 @@ bool power::has(const ex & other, unsigned options) const
                         return true;
         }
 	return basic::has(other, options);
+}
+
+bool power::cmatch(const ex & pattern, exmap& map) const
+{
+	if (is_exactly_a<wildcard>(pattern)) {
+                const auto& it = map.find(pattern);
+                if (it != map.end())
+		        return is_equal(ex_to<basic>(it->second));
+		map[pattern] = *this;
+		return true;
+	} 
+        if (not is_exactly_a<power>(pattern))
+                return false;
+        if (is_exactly_a<expairseq>(pattern.op(0))) {
+                CMatcher cm(basis, pattern.op(0), map);
+                while (true) {
+                        std::optional<exmap> m = cm.get();
+                        if (not m)
+                                return false;
+                        map = m.value();
+                        if (exponent.cmatch(pattern.op(1), map))
+                                return true;
+                }
+        }
+        return basis.cmatch(pattern.op(0), map)
+                and exponent.cmatch(pattern.op(1), map);
 }
 
 // from mul.cpp

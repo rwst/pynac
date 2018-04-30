@@ -20,6 +20,7 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#define register
 #include <Python.h>
 #include "py_funcs.h"
 #include "function.h"
@@ -36,6 +37,9 @@
 #include "utils.h"
 #include "remember.h"
 #include "symbol.h"
+#include "cmatcher.h"
+#include "wildcard.h"
+#include "expairseq.h"
 
 #include <iostream>
 #include <string>
@@ -1389,6 +1393,46 @@ bool function::match_same_type(const basic & other) const
 
 	return serial == o.serial;
 }
+
+bool function::cmatch(const ex & pattern, exmap& map) const
+{
+        // Commutative function not supported yet but can be
+        // treated like an expairseq
+	if (is_exactly_a<wildcard>(pattern)) {
+                const auto& it = map.find(pattern);
+                if (it != map.end())
+		        return is_equal(ex_to<basic>(it->second));
+		map[pattern] = *this;
+		return true;
+	} 
+        if (not is_exactly_a<function>(pattern))
+                return false;
+	const function & p = ex_to<function>(pattern);
+	if (serial != p.serial)
+		return false;
+        if (nops() == 0)
+                return true;
+        if (nops() == 1)
+                return op(0).cmatch(p.op(0), map);
+        // TODO: To implement cmatching of noncomm. functions with any
+        // number of arguments CMatcher needs to be modified to run
+        // for a single permutation. Instead we just handle two
+        // arguments manually here
+        if (is_exactly_a<expairseq>(p.op(0))) {
+                CMatcher cm(op(0), p.op(0), map);
+                while (true) {
+                        std::optional<exmap> m = cm.get();
+                        if (not m)
+                                return false;
+                        map = m.value();
+                        if (op(1).cmatch(p.op(1), map))
+                                return true;
+                }
+        }
+        return op(0).cmatch(p.op(0), map)
+                and op(1).cmatch(p.op(1), map);
+}
+
 
 unsigned function::return_type() const
 {

@@ -577,7 +577,7 @@ bool basic::match(const ex & pattern, exmap& map) const
         return true;
 }
 
-bool basic::cmatch(const ex & pattern, exmap& map, exmap_sink_t& sink) const
+bool basic::cmatch(const ex & pattern, exmap& map) const
 {
         return match(pattern, map);
 }
