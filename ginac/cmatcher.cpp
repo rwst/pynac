@@ -19,6 +19,8 @@
 #include "cmatcher.h"
 #include "expairseq.h"
 #include "wildcard.h"
+#include "power.h"
+#include "function.h"
 #include "operators.h"
 #include "utils.h"
 
@@ -30,10 +32,11 @@
 namespace GiNaC {
 
 static bool debug=false;
+int CMatcher::level = 0;
 
 void CMatcher::init()
 {
-        DEBUG std::cerr<<"cmatch: "<<source<<", "<<pattern<<", "<<map<<std::endl; 
+        DEBUG std::cerr<<level<<" cmatch: "<<source<<", "<<pattern<<", "<<map<<std::endl; 
 	if (is_exactly_a<wildcard>(pattern)) {
                 const auto& it = map.find(pattern);
                 if (it != map.end()) {
@@ -91,10 +94,13 @@ void CMatcher::init()
                 }
                 if (matched) {
                         it1 = wilds.erase(it1);
-                        DEBUG std::cerr<<"preset "<<mit->first<<" == "<<mit->second<<" found in "<<source<<std::endl;
+                        DEBUG std::cerr<<level<<" preset "<<mit->first<<" == "<<mit->second<<" found in "<<source<<std::endl;
                 }
-                else
-                        ++it1;
+                else {
+                        DEBUG std::cerr<<level<<" preset "<<mit->first<<" == "<<mit->second<<" conflict, "<<mit->second<<" not found"<<std::endl;
+                        ret_val = false;
+                        return;
+                }
         }
         // Check that all "constants" in the pattern are matched
         for (auto it1 = pat.begin(); it1 != pat.end(); ) {
@@ -112,11 +118,11 @@ void CMatcher::init()
                         ++it2;
                 }
                 if (not matched) {
-                        DEBUG std::cerr<<"constant "<<*it1<<" not found in "<<source<<std::endl;
+                        DEBUG std::cerr<<level<<" constant "<<*it1<<" not found in "<<source<<std::endl;
                         ret_val = false;
                         return;
                 }
-                        DEBUG std::cerr<<"constant "<<*it1<<" found in "<<source<<std::endl;
+                        DEBUG std::cerr<<level<<" constant "<<*it1<<" found in "<<source<<std::endl;
                 it1 = pat.erase(it1);
         }
         if (wilds.empty() and ops.empty() and pat.empty()) {
@@ -145,63 +151,53 @@ void CMatcher::run()
                 ret_val = false;
                 return;
         }
-        DEBUG std::cerr<<"run() entered"<<std::endl;
+        DEBUG std::cerr<<level<<" run() entered"<<std::endl;
         clear_ret();
         std::vector<exmap> map_repo(N);
         // The outer loop goes though permutations of perm
         while (true) {
                 size_t index = 0;
-                bool perm_failed = false;
-                std::vector<bool> pterm_matched(N);
-                pterm_matched.assign(N, false);
-                DEBUG { std::cerr<<"["; for (size_t i:perm) std::cerr<<i<<","; std::cerr<<"]"<<std::endl; }
+                DEBUG { std::cerr<<level<<" ["; for (size_t i:perm) std::cerr<<i<<","; std::cerr<<"]"<<std::endl; }
                 // The second loop increases index to get a new ops term
                 do {
                         const ex& e = ops[perm[index]];
-                        DEBUG std::cerr<<"index: "<<index<<", e: "<<e<<std::endl;
+                        DEBUG std::cerr<<level<<" index: "<<index<<", op: "<<e<<std::endl;
                         if (index == 0)
                                 map_repo[0] = map;
                         else
                                 map_repo[index] = map_repo[index-1];
                         bool pterm_found = false;
-                        for (size_t i=0; i<pat.size(); ++i) {
-                                if (pterm_matched[i])
-                                        continue;
                                 // At this point we try matching p to e 
-                                const ex& p = pat[i];
-                                exmap m = map_repo[index];
-                                if (cms[index])
-                                        cms[index].reset();
-                                if (not is_a<expairseq>(p)
-                                    or not is_a<expairseq>(e)) {
-                                        // normal matching attempt
-                                        bool ret = e.match(p, m);
-                                        if (ret) {
-                                                map_repo[index] = m;
-                                                pterm_matched[i] = true;
-                                                pterm_found = true;
-                                                DEBUG std::cerr<<"match found: "<<e<<", "<<p<<", "<<m<<": "<<ret<<std::endl; 
-                                                break;
-                                        }
+                        const ex& p = pat[index];
+                        exmap m = map_repo[index];
+                        if (cms[index])
+                                cms[index].reset();
+                        if (not (is_a<expairseq>(e)
+                                 or is_a<power>(e)
+                                 or is_a<function>(e))) {
+                                // normal matching attempt
+                                bool ret = e.match(p, m);
+                                if (ret) {
+                                        map_repo[index] = m;
+                                        pterm_found = true;
+                                        DEBUG std::cerr<<level<<" match found: "<<e<<", "<<p<<", "<<m<<": "<<ret<<std::endl; 
+                                        continue;
+                                }
+                        }
+                        else {
+                                // both p and e are sum or product
+                                cms[index].emplace(CMatcher(e, p, m));
+                                CMatcher& cm = cms[index].value();
+                                std::optional<exmap> opm = cm.get();
+                                if (opm) {
+                                        map_repo[index] = opm.value();
+                                        pterm_found = true;
+                                        DEBUG std::cerr<<level<<" cmatch found: "<<e<<", "<<p<<", "<<map_repo[index]<<std::endl;
+                                        continue;
                                 }
                                 else {
-                                        // both p and e are sum or product
-                                        cms[index].emplace(CMatcher(e, p, m));
-                                        CMatcher& cm = cms[index].value();
-                                        std::optional<exmap> opm = cm.get();
-                                        if (opm) {
-                                                map_repo[index] = opm.value();
-                                                pterm_matched[i] = true;
-                                                pterm_found = true;
-                                                DEBUG std::cerr<<"cmatch found: "<<e<<", "<<p<<", "<<map_repo[index]<<std::endl;
-                                                break;
-                                        }
-                                        else {
-                                                cms[index].reset();
-                                        }
+                                        cms[index].reset();
                                 }
-                                if (pterm_found)
-                                        break;
                         }
                         if (not pterm_found) {
                         // did we start coroutines in this permutation?
@@ -210,28 +206,26 @@ void CMatcher::run()
                                 while (--i >= 0) {
                                         if (cms[i]) {
                                                 CMatcher& cm = cms[i].value();
-                                                DEBUG std::cerr<<"find alt: "<<i<<std::endl;
+                                                DEBUG std::cerr<<level<<" find alt: "<<i<<std::endl;
                                                 cm.clear_ret();
                                                 std::optional<exmap> opm = cm.get();
                                                 if (opm) {
                                                         map_repo[i] = opm.value();
                                                         index = i;
                                                         alt_solution_found = true;
-                                                        DEBUG std::cerr<<"try alt: "<<i<<", "<<map_repo[i]<<std::endl;
+                                                        DEBUG std::cerr<<level<<" try alt: "<<i<<", "<<map_repo[i]<<std::endl;
                                                         break;
                                                 }
                                                 cms[i].reset();
                                         }
                                 }
-                                if (not alt_solution_found) {
-                                        perm_failed = true;
+                                if (not alt_solution_found)
                                         break;
-                                }
                         }
                 }
                 while (++index < N);
 
-                if (not perm_failed) {
+                if (index >= N) {
                         // permute and get leftmost changed position
                         int pos = next_permutation_pos(perm.begin(),
                                         perm.end());
@@ -242,7 +236,7 @@ void CMatcher::run()
                         // still permutations left
                         // state could save index too
                         index = pos;
-                        DEBUG std::cerr<<"send alt: "<<map_repo[N-1]<<std::endl;
+                        DEBUG std::cerr<<level<<" send alt: "<<map_repo[N-1]<<std::endl;
                         ret_val = true;
                         ret_map = map_repo[N-1];
                         return;
@@ -257,7 +251,7 @@ void CMatcher::run()
                                                 perm.end());
                                 if (not more) {
                                         ret_val = false;
-                                        DEBUG std::cerr<<"perms exhausted"<<std::endl;
+                                        DEBUG std::cerr<<level<<" perms exhausted"<<std::endl;
                                         return;
                                 }
                         }

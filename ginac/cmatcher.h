@@ -13,6 +13,7 @@ struct CMatcher;
 struct CMatcher {
         CMatcher(const ex &source_, const ex & pattern_, exmap& map_)
          : source(source_), pattern(pattern_), map(map_) { init(); }
+        //~CMatcher() { --level; } 
         void init();
         void run();
         std::optional<exmap> get()
@@ -21,7 +22,9 @@ struct CMatcher {
                         // it was already done in init()
                         return ret_map;
                 }
+                ++level;
                 run();    // guarantees to set ret, and if true, map
+                --level;
                 return ret_map;
         }
         void clear_ret()
@@ -30,6 +33,7 @@ struct CMatcher {
                 ret_map.reset();
         }
 
+        static int level;
         ex source, pattern;
         std::optional<bool> ret_val;
         std::optional<exmap> ret_map;
