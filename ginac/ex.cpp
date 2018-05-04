@@ -20,6 +20,7 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#define register
 #include <Python.h>
 #include "ex.h"
 #include "ex_utils.h"
@@ -105,15 +106,10 @@ bool ex::match(const ex & pattern) const
 	return bp->match(pattern, map);
 }
 
-bool ex::match(const ex & pattern, exmap& map) const
-{
-        return cmatch(pattern, map);
-}
-
 bool ex::match(const ex & pattern, lst & repl_lst) const
 {
         exmap map;
-        bool ret = match(pattern, map);
+        bool ret = bp->match(pattern, map);
         for (const auto& pair : map)
                 repl_lst.append(pair.first == pair.second);
         return ret;

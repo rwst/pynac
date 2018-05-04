@@ -20,7 +20,6 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include "py_funcs.h"
 #include "power.h"
 #include "expairseq.h"
 #include "add.h"
