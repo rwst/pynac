@@ -16,6 +16,9 @@ struct CMatcher {
         //~CMatcher() { --level; } 
         void init();
         void run();
+        void noncomm_run();
+        void no_global_wild();
+        void with_global_wild();
         std::optional<exmap> get()
         {
                 if (ret_val) {
@@ -40,11 +43,12 @@ struct CMatcher {
 
         // the state consists of the following
         exmap map;
-        size_t N{0};
+        size_t N{0}, P{0};
         exvector ops, pat;
         std::vector<size_t> perm;
         std::vector<std::optional<CMatcher>> cms;
-        bool all_perms;
+        bool all_perms, global_wild{false};
+
 };
 
 }

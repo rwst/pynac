@@ -539,6 +539,18 @@ int next_permutation_pos(BidirIt first, BidirIt last)
     }
 }
 
+template<class C, class H>
+bool subset_of(const std::unordered_set<C,H>& s1,
+               const std::unordered_set<C,H>& s2)
+{
+        if (s1.size() > s2.size())
+                return false;
+        for (const auto& elem : s1)
+                if (s2.find(elem) == s2.end())
+                        return false;
+        return true;
+}
+
 } // namespace GiNaC
 
 
