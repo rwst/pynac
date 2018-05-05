@@ -27,6 +27,11 @@ Richard Kreckel <Richard.Kreckel@uni-mainz.de>
 Alexei Sheplyakov <varg@theor.jinr.ru>
 Jens Vollinga <vollinga@thep.physik.uni-mainz.de>
 
+Authors of optional.hpp
+-----------------------
+In this package the file optional.hpp is distributed unde MIT license.
+Author: Martin Moene, see https://github.com/martinmoene/optional-lite
+
 Contributors of patches
 -----------------------
 

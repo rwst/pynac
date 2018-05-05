@@ -717,7 +717,7 @@ bool power::cmatch(const ex & pattern, exmap& map) const
         if (is_exactly_a<expairseq>(pattern.op(0))) {
                 CMatcher cm(basis, pattern.op(0), map);
                 while (true) {
-                        std::optional<exmap> m = cm.get();
+                        opt_exmap m = cm.get();
                         if (not m)
                                 return false;
                         map = m.value();

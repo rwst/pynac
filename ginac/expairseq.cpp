@@ -1744,7 +1744,7 @@ bool expairseq::cmatch(const ex & pattern, exmap& map) const
 {
         CMatcher::level=0;
         CMatcher cm(*this, pattern, map);
-        std::optional<exmap> m = cm.get();
+        opt_exmap m = cm.get();
         if (not m)
                 return false;
         map = m.value();

@@ -539,6 +539,28 @@ int next_permutation_pos(BidirIt first, BidirIt last)
     }
 }
 
+// choice of r out of n, given a container [0,...,n]
+template <class C>
+int next_combination(std::vector<C>& vec, size_t r, size_t n)
+{
+        if (vec.empty()) {
+                for (size_t i=0; i<r; ++r)
+                        vec.push_back(i);
+                return n>1 and r<n and r>0;
+        }
+        if (n<2 or r==n)
+                return false;
+        auto first = vec.begin(), last = vec.end();
+        if ((*first) != n - r) {
+                auto mt = last;
+                while (*(--mt) == n-(last-mt));
+                (*mt)++;
+                while (++mt != last) *mt = *(mt-1)+1;
+                return true;
+        }
+        return false;
+}
+
 template<class C, class H>
 bool subset_of(const std::unordered_set<C,H>& s1,
                const std::unordered_set<C,H>& s2)

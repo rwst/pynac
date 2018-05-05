@@ -39,6 +39,33 @@ namespace GiNaC {
 static bool debug=true;
 int CMatcher::level = 0;
 
+inline bool is_func(const ex& e)
+{
+        return is_exactly_a<power>(e)
+            or is_exactly_a<function>(e)
+            or is_a<expairseq>(e);
+}
+
+inline bool is_ncfunc(const ex& e)
+{
+        return is_exactly_a<power>(e)
+            or is_exactly_a<function>(e);
+}
+
+void CMatcher::make_cmatcher(const ex& e, size_t i, exmap& mm)
+{
+        exmap m = mm;
+        cms[i].emplace(CMatcher(e, pat[i], m));
+        CMatcher& cm = cms[i].value();
+        opt_exmap opm = cm.get();
+        ret_map = opm;
+        ret_val = opm? true : false;
+        if (opm) {
+                mm = opm.value();
+                DEBUG std::cerr<<level<<" cmatch found: "<<e<<", "<<pat[1]<<", "<<opm.value()<<std::endl;
+        }
+}
+
 void CMatcher::init()
 {
         DEBUG std::cerr<<level<<" cmatch: "<<source<<", "<<pattern<<", "<<map<<std::endl;
@@ -62,6 +89,13 @@ void CMatcher::init()
 	} 
 	if (ex_to<basic>(source).tinfo() != ex_to<basic>(pattern).tinfo()) {
                 DEBUG std::cerr<<"pattern type mismatch"<<std::endl;
+                ret_val = false;
+                return;
+        }
+        if (is_exactly_a<function>(source)
+           and ex_to<function>(source).get_serial()
+            != ex_to<function>(pattern).get_serial()) {
+                DEBUG std::cerr<<"function type mismatch"<<std::endl;
                 ret_val = false;
                 return;
         }
@@ -159,10 +193,10 @@ void CMatcher::init()
         if (wilds.empty() and (ops.empty() or pat.empty()))
                 throw std::runtime_error("matching gotcha");
 
-        if (is_exactly_a<power>(source)) {
+        if (is_ncfunc(source)) {
                 if (wilds.empty() and pat.empty())
                         throw std::runtime_error("matching gotcha");
-                std::optional<CMatcher> ocm;
+                opt_CMatcher ocm;
                 cms.push_back(ocm);
                 if (ops.size() == 2) {
                         cms.push_back(ocm);
@@ -182,7 +216,7 @@ void CMatcher::init()
 
         N = ops.size();
         P = pat.size();
-        std::optional<CMatcher> ocm;
+        opt_CMatcher ocm;
         size_t len = global_wild? N-1 : P;
         for (size_t i=0; i<len; ++i) {
                 perm.push_back(i);
@@ -193,7 +227,8 @@ void CMatcher::init()
 
 void CMatcher::run()
 {
-        if (is_exactly_a<power>(source)) {
+        clear_ret();
+        if (is_ncfunc(source)) {
                 noncomm_run();
                 return;
         }
@@ -201,8 +236,6 @@ void CMatcher::run()
                 ret_val = false;
                 return;
         }
-        DEBUG std::cerr<<level<<" run() entered"<<std::endl;
-        clear_ret();
 
         if (global_wild)
                 with_global_wild();
@@ -213,6 +246,7 @@ void CMatcher::run()
 void CMatcher::noncomm_run()
 {
         DEBUG std::cerr<<level<<" noncomm_run() entered, N="<<N<<std::endl;
+        // TODO: generalize, refactor
         if (N == 1) {
                 if (cms[0]) {
                         auto& cm = cms[0].value();
@@ -224,69 +258,62 @@ void CMatcher::noncomm_run()
                         return;
                 }
                 const ex& e = ops[0];
-                if (not (is_a<expairseq>(e)
-                         or is_a<power>(e)
-                         or is_a<function>(e)))
-                        throw std::runtime_error("matching gotcha");
-/*                         // normal matching attempt
-                        exmap m = map;
-                        ret_val = e.match(pat[0], m);
-                        if (ret_val) {
-                                ret_map = m;
-        DEBUG std::cerr<<level<<"match found: "<<e<<", "<<pat[0]<<", "<<m<<std::endl;
-                        }
+                if (not is_func(e)) {
+                        ret_val = e.match(pat[0], map);
+                        ret_map = map;
                         return;
-                }*/
-                exmap m = map;
-                cms[0].emplace(CMatcher(e, pat[0], m));
-                CMatcher& cm = cms[0].value();
-                std::optional<exmap> opm = cm.get();
-                ret_map = opm;
-                ret_val = opm? true : false;
-                if (opm)
-                        DEBUG std::cerr<<level<<" cmatch found: "<<e<<", "<<pat[0]<<", "<<opm.value()<<std::endl;
+                }
+                make_cmatcher(e, 0, map);
                 return;
         }
         
         if (N == 2) {
                 const ex& e = ops[0];
-                if (not (is_a<expairseq>(e)
-                         or is_a<power>(e)
-                         or is_a<function>(e)))
-                        throw std::runtime_error("matching gotcha");
                 const ex& ee = ops[1];
-                if (not (is_a<expairseq>(ee)
-                         or is_a<power>(ee)
-                         or is_a<function>(ee)))
-                        throw std::runtime_error("matching gotcha");
-                if (cms[1]) {
-                        auto& cm = cms[1].value();
-                        ret_map = cm.get();
-                        if (ret_map) {
-                                DEBUG std::cerr<<level<<"send alt: "<<ret_map.value()<<std::endl;
-                                ret_val = true;
-                                return;
-                        }
-                }
-/*                const ex& e = ops[0];
-                if (not (is_a<expairseq>(e)
-                         or is_a<power>(e)
-                         or is_a<function>(e))) {
-                         // normal matching attempt
-                        exmap m = map;
-                        ret_val = e.match(pat[0], m);
-                        if (ret_val) {
-                                ret_map = m;
-        DEBUG std::cerr<<level<<"match found: "<<e<<", "<<pat[0]<<", "<<m<<std::endl;
-                        }
+                if (not (is_func(e) and is_func(ee))) {
+                        ret_val = e.match(pat[0], map)
+                                  and ee.match(pat[1], map);
+                        ret_map = map;
                         return;
                 }
-*/        }
+                if (not (is_func(e))) {
+                        if (not e.match(pat[0], map)) {
+                                ret_val = false;
+                                return;
+                        }
+                        if (cms[1]) {
+                                auto& cm = cms[1].value();
+                                cm.clear_ret();
+                                ret_map = cm.get();
+                                ret_val = ret_map? true : false;
+                                if (ret_val)
+                                        DEBUG std::cerr<<level<<" send alt: "<<ret_map.value()<<std::endl;
+                                return;
+                        }
+                        make_cmatcher(ee, 1, map);
+                        return;
+                }
+                // both ops are funcs
+                // first, find alt for 2nd op
+                bool ret1 = false;
+                if (cms[1]) {
+                        auto& cm = cms[1].value();
+                        cm.clear_ret();
+                        ret_map = cm.get();
+                        ret_val = ret_map? true : false;
+                        if (ret_val)
+                                DEBUG std::cerr<<level<<" send alt: "<<ret_map.value()<<std::endl;
+                        return;
+                }
+                make_cmatcher(ee, 1, map);
+                return;
+        }
 
 }
 
 void CMatcher::no_global_wild()
 {
+        DEBUG std::cerr<<level<<" run() entered"<<std::endl;
         std::vector<exmap> map_repo(P);
         // The outer loop goes though permutations of perm
         while (true) {
@@ -303,13 +330,11 @@ void CMatcher::no_global_wild()
                         bool pterm_found = false;
                                 // At this point we try matching p to e 
                         const ex& p = pat[index];
-                        exmap m = map_repo[index];
                         if (cms[index])
                                 cms[index].reset();
-                        if (not (is_a<expairseq>(e)
-                                 or is_a<power>(e)
-                                 or is_a<function>(e))) {
+                        if (not is_func(e)) {
                                 // normal matching attempt
+                                exmap m = map_repo[index];
                                 bool ret = e.match(p, m);
                                 if (ret) {
                                         map_repo[index] = m;
@@ -319,13 +344,9 @@ void CMatcher::no_global_wild()
                                 }
                         }
                         else {
-                                cms[index].emplace(CMatcher(e, p, m));
-                                CMatcher& cm = cms[index].value();
-                                std::optional<exmap> opm = cm.get();
-                                if (opm) {
-                                        map_repo[index] = opm.value();
+                                make_cmatcher(e, index, map_repo[index]);
+                                if (ret_val.value()) {
                                         pterm_found = true;
-                                        DEBUG std::cerr<<level<<" cmatch found: "<<e<<", "<<p<<", "<<map_repo[index]<<std::endl;
                                         continue;
                                 }
                                 else {
@@ -341,7 +362,7 @@ void CMatcher::no_global_wild()
                                                 CMatcher& cm = cms[i].value();
                                                 DEBUG std::cerr<<level<<" find alt: "<<i<<std::endl;
                                                 cm.clear_ret();
-                                                std::optional<exmap> opm = cm.get();
+                                                opt_exmap opm = cm.get();
                                                 if (opm) {
                                                         map_repo[i] = opm.value();
                                                         index = i;
@@ -396,6 +417,7 @@ void CMatcher::no_global_wild()
 
 void CMatcher::with_global_wild()
 {
+        DEBUG std::cerr<<level<<" gwrun() entered"<<std::endl;
 }
 
 }
