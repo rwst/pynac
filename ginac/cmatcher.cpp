@@ -52,21 +52,27 @@ inline bool is_ncfunc(const ex& e)
             or is_exactly_a<function>(e);
 }
 
-void CMatcher::make_cmatcher(const ex& e, size_t i, exmap& mm)
+inline CMatcher& CMatcher::make_cmatcher(const ex& e, size_t i, exmap& mm)
 {
         exmap m = mm;
         cms[i].emplace(CMatcher(e, pat[i], m));
-        CMatcher& cm = cms[i].value();
-        opt_exmap opm = cm.get();
-        ret_map = opm;
-        ret_val = opm? true : false;
-        if (opm) {
-                mm = opm.value();
-                DEBUG std::cerr<<level<<" cmatch found: "<<e<<", "<<pat[1]<<", "<<opm.value()<<std::endl;
-        }
+        return cms[i].value();
 }
 
-void CMatcher::init()
+inline bool CMatcher::get_alt(CMatcher& cm)
+{
+        if (cm.ret_val and not cm.ret_val.value())
+                return false;
+        bool ret;
+        const opt_exmap& opm = cm.get();
+        ret_map = opm;
+        ret_val = ret = opm? true : false;
+        if (ret)
+                DEBUG std::cerr<<level<<" cmatch found: "<<opm.value()<<std::endl;
+        return ret;
+}
+
+opt_bool CMatcher::init()
 {
         DEBUG std::cerr<<level<<" cmatch: "<<source<<", "<<pattern<<", "<<map<<std::endl;
         const size_t snops = source.nops(), pnops = pattern.nops();
@@ -74,42 +80,34 @@ void CMatcher::init()
                 DEBUG std::cerr << "pattern is single wildcard"<<std::endl;
                 const auto& it = map.find(pattern);
                 if (it != map.end()) {
-		        if (not source.is_equal(ex_to<basic>(it->second))) {
-                                ret_val = false;
-                                return;
-                        }
-                        ret_val = true;
+		        if (not source.is_equal(ex_to<basic>(it->second)))
+                                return false;
                         ret_map = map;
-                        return;
+                        return true;
                 }
 		map[pattern] = source;
-                ret_val = true;
                 ret_map = map;
-		return;
+		return true;
 	} 
 	if (ex_to<basic>(source).tinfo() != ex_to<basic>(pattern).tinfo()) {
                 DEBUG std::cerr<<"pattern type mismatch"<<std::endl;
-                ret_val = false;
-                return;
+                return false;
         }
         if (is_exactly_a<function>(source)
            and ex_to<function>(source).get_serial()
             != ex_to<function>(pattern).get_serial()) {
                 DEBUG std::cerr<<"function type mismatch"<<std::endl;
-                ret_val = false;
-                return;
+                return false;
         }
         if (snops < pnops) {
                 DEBUG std::cerr<<"# of source terms > pattern terms"<<std::endl;
-                ret_val = false;
-                return;
+                return false;
         }
         symbolset oset = source.symbols();
         symbolset pset = substitute(pattern.wilds(), map);
         if (not subset_of(pset, oset)) {
                 DEBUG std::cerr<<"substitution has unmatched symbols"<<std::endl;
-                ret_val = false;
-                return;
+                return false;
         }
 
         // Chop into terms
@@ -147,15 +145,12 @@ void CMatcher::init()
                 }
                 else {
                         DEBUG std::cerr<<level<<" preset "<<mit->first<<" == "<<mit->second<<" conflict, "<<mit->second<<" not found"<<std::endl;
-                        ret_val = false;
-                        return;
+                        return false;
                 }
         }
-        if (snops > pnops) {
-                if (wilds.empty()) {
-                        ret_val = false;
-                        return;
-                }
+        if (not is_ncfunc(source) and snops > pnops) {
+                if (wilds.empty())
+                        return false;
                 // we have a global wildcard, i.e., one that matches
                 // more than one term (x^+ in the paper) in a sum or
                 // product
@@ -179,50 +174,50 @@ void CMatcher::init()
                 }
                 if (not matched) {
                         DEBUG std::cerr<<level<<" constant "<<*it1<<" not found in "<<source<<std::endl;
-                        ret_val = false;
-                        return;
+                        return false;
                 }
                         DEBUG std::cerr<<level<<" constant "<<*it1<<" found in "<<source<<std::endl;
                 it1 = pat.erase(it1);
         }
         if (wilds.empty() and ops.empty() and pat.empty()) {
-                ret_val = true;
                 ret_map = map;
-                return;
+                return true;
         }
         if (wilds.empty() and (ops.empty() or pat.empty()))
                 throw std::runtime_error("matching gotcha");
 
-        if (is_ncfunc(source)) {
-                if (wilds.empty() and pat.empty())
-                        throw std::runtime_error("matching gotcha");
-                opt_CMatcher ocm;
-                cms.push_back(ocm);
-                if (ops.size() == 2) {
-                        cms.push_back(ocm);
-                        pat.clear();
-                        pat.push_back(pattern.op(0));
-                        pat.push_back(pattern.op(1));
-                        N = P = 2;
-                        return;
-                }
-                if (pat.empty())
-                        pat.push_back(wilds[0]);
-                N = P = 1;
-                return;
-        }
         for (auto&& w : wilds)
                 pat.push_back(w);
-
+        
         N = ops.size();
         P = pat.size();
-        opt_CMatcher ocm;
         size_t len = global_wild? N-1 : P;
         for (size_t i=0; i<len; ++i) {
+                cms.emplace_back();
+        }
+        
+        if (is_ncfunc(source)) {
+                if (pat.empty())
+                        throw std::runtime_error("matching gotcha");
+                size_t i;
+                for (i=0; i<N; ++i) {
+                        if (is_func(ops[i]))
+                                break;
+                        if (not ops[i].match(pat[i], map))
+                                return false;
+                }
+                if (i == N) {
+                        ret_map = map;
+                        return true;
+                }
+                return {};
+        }
+
+        for (size_t i=0; i<len; ++i) {
                 perm.push_back(i);
-                cms.push_back(ocm);
         }
         all_perms = false;
+        return {};
 }
 
 void CMatcher::run()
@@ -245,25 +240,19 @@ void CMatcher::run()
 
 void CMatcher::noncomm_run()
 {
+        std::vector<exmap> map_repo(P);
         DEBUG std::cerr<<level<<" noncomm_run() entered, N="<<N<<std::endl;
         // TODO: generalize, refactor
         if (N == 1) {
+                if (not is_func(ops[0])) {
+                        ret_val = false;
+                        return;
+                }
                 if (cms[0]) {
-                        auto& cm = cms[0].value();
-                        cm.clear_ret();
-                        ret_map = cm.get();
-                        ret_val = ret_map? true : false;
-                        if (ret_val)
-                                DEBUG std::cerr<<level<<" send alt: "<<ret_map.value()<<std::endl;
+                        get_alt(cms[0].value());
                         return;
                 }
-                const ex& e = ops[0];
-                if (not is_func(e)) {
-                        ret_val = e.match(pat[0], map);
-                        ret_map = map;
-                        return;
-                }
-                make_cmatcher(e, 0, map);
+                get_alt(make_cmatcher(ops[0], 0, map));
                 return;
         }
         
@@ -271,44 +260,95 @@ void CMatcher::noncomm_run()
                 const ex& e = ops[0];
                 const ex& ee = ops[1];
                 if (not (is_func(e) and is_func(ee))) {
-                        ret_val = e.match(pat[0], map)
-                                  and ee.match(pat[1], map);
-                        ret_map = map;
+                        ret_val = false;
                         return;
                 }
                 if (not (is_func(e))) {
+                        if (cms[1]) {
+                                get_alt(cms[1].value());
+                                return;
+                        }
                         if (not e.match(pat[0], map)) {
                                 ret_val = false;
                                 return;
                         }
-                        if (cms[1]) {
-                                auto& cm = cms[1].value();
-                                cm.clear_ret();
-                                ret_map = cm.get();
-                                ret_val = ret_map? true : false;
-                                if (ret_val)
-                                        DEBUG std::cerr<<level<<" send alt: "<<ret_map.value()<<std::endl;
+                        get_alt(make_cmatcher(ee, 1, map));
+                        return;
+                }
+                if (not (is_func(ee))) {
+                        bool ret;
+                        if (cms[0])
+                                ret = get_alt(cms[0].value());
+                        else
+                                ret = get_alt(make_cmatcher(e, 0, map));
+                        if (not ret) {
+                                ret_val = false;
                                 return;
                         }
-                        make_cmatcher(ee, 1, map);
+                        ret_val = e.match(pat[1], ret_map.value());
                         return;
                 }
-                // both ops are funcs
-                // first, find alt for 2nd op
-                bool ret1 = false;
-                if (cms[1]) {
-                        auto& cm = cms[1].value();
-                        cm.clear_ret();
-                        ret_map = cm.get();
-                        ret_val = ret_map? true : false;
-                        if (ret_val)
-                                DEBUG std::cerr<<level<<" send alt: "<<ret_map.value()<<std::endl;
-                        return;
+        }
+        // both ops are funcs
+        size_t index = 0;
+        // The second loop increases index to get a new ops term
+        do {
+                const ex& e = ops[index];
+                DEBUG std::cerr<<level<<" index: "<<index<<", op: "<<e<<std::endl;
+                if (index == 0)
+                        map_repo[0] = map;
+                else
+                        map_repo[index] = map_repo[index-1];
+                // At this point we try matching p to e 
+                const ex& p = pat[index];
+                if (cms[index])
+                        cms[index].reset();
+                if (not is_func(e)) {
+                        // normal matching attempt
+                        exmap m = map_repo[index];
+                        bool ret = e.match(p, m);
+                        if (ret) {
+                                map_repo[index] = m;
+                                DEBUG std::cerr<<level<<" match found: "<<e<<", "<<p<<", "<<m<<": "<<ret<<std::endl; 
+                                continue;
+                        }
                 }
-                make_cmatcher(ee, 1, map);
+                else {
+                        if (get_alt(make_cmatcher(e, index,
+                                                  map_repo[index]))) {
+                                map_repo[index] = ret_map.value();
+                                continue;
+                        }
+                        else
+                                cms[index].reset();
+                }
+                bool alt_solution_found = false;
+                int i = static_cast<int>(index);
+                while (--i >= 0) {
+                        if (cms[i]) {
+                                DEBUG std::cerr<<level<<" find alt: "<<i<<std::endl;
+                                if (get_alt(cms[i].value())) {
+                                        map_repo[i] = ret_map.value();
+                                        index = i;
+                                        alt_solution_found = true;
+                                        DEBUG std::cerr<<level<<" try alt: "<<i<<", "<<map_repo[i]<<std::endl;
+                                        break;
+                                }
+                                cms[i].reset();
+                        }
+                }
+                if (not alt_solution_found)
+                        break;
+        }
+        while (++index < P);
+
+        if (index >= P) {
+                DEBUG std::cerr<<level<<" send alt: "<<map_repo[P-1]<<std::endl;
+                ret_val = true;
+                ret_map = map_repo[P-1];
                 return;
         }
-
+        ret_val = false;
 }
 
 void CMatcher::no_global_wild()
@@ -327,8 +367,7 @@ void CMatcher::no_global_wild()
                                 map_repo[0] = map;
                         else
                                 map_repo[index] = map_repo[index-1];
-                        bool pterm_found = false;
-                                // At this point we try matching p to e 
+                        // At this point we try matching p to e 
                         const ex& p = pat[index];
                         if (cms[index])
                                 cms[index].reset();
@@ -338,44 +377,37 @@ void CMatcher::no_global_wild()
                                 bool ret = e.match(p, m);
                                 if (ret) {
                                         map_repo[index] = m;
-                                        pterm_found = true;
                                         DEBUG std::cerr<<level<<" match found: "<<e<<", "<<p<<", "<<m<<": "<<ret<<std::endl; 
                                         continue;
                                 }
                         }
                         else {
-                                make_cmatcher(e, index, map_repo[index]);
-                                if (ret_val.value()) {
-                                        pterm_found = true;
+                                if (get_alt(make_cmatcher(e, index,
+                                                          map_repo[index]))) {
+                                        map_repo[index] = ret_map.value();
                                         continue;
                                 }
-                                else {
+                                else
                                         cms[index].reset();
-                                }
                         }
-                        if (not pterm_found) {
                         // did we start coroutines in this permutation?
-                                bool alt_solution_found = false;
-                                int i = static_cast<int>(index);
-                                while (--i >= 0) {
-                                        if (cms[i]) {
-                                                CMatcher& cm = cms[i].value();
-                                                DEBUG std::cerr<<level<<" find alt: "<<i<<std::endl;
-                                                cm.clear_ret();
-                                                opt_exmap opm = cm.get();
-                                                if (opm) {
-                                                        map_repo[i] = opm.value();
-                                                        index = i;
-                                                        alt_solution_found = true;
-                                                        DEBUG std::cerr<<level<<" try alt: "<<i<<", "<<map_repo[i]<<std::endl;
-                                                        break;
-                                                }
-                                                cms[i].reset();
+                        bool alt_solution_found = false;
+                        int i = static_cast<int>(index);
+                        while (--i >= 0) {
+                                if (cms[i]) {
+                                        DEBUG std::cerr<<level<<" find alt: "<<i<<std::endl;
+                                        if (get_alt(cms[i].value())) {
+                                                map_repo[i] = ret_map.value();
+                                                index = i;
+                                                alt_solution_found = true;
+                                                DEBUG std::cerr<<level<<" try alt: "<<i<<", "<<map_repo[i]<<std::endl;
+                                                break;
                                         }
+                                        cms[i].reset();
                                 }
-                                if (not alt_solution_found)
-                                        break;
                         }
+                        if (not alt_solution_found)
+                                break;
                 }
                 while (++index < P);
 
@@ -411,7 +443,7 @@ void CMatcher::no_global_wild()
                         }
                 }
         }
-        DEBUG std::cerr<<"run() exited"<<std::endl;
+        DEBUG std::cerr<<"noncomm_run() exited"<<std::endl;
         ret_val = false;
 }
 

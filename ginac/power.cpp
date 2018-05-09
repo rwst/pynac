@@ -38,6 +38,7 @@
 #include "cmatcher.h"
 #include "wildcard.h"
 
+#include <unistd.h>
 #include <vector>
 #include <stdexcept>
 #include <limits>
@@ -714,19 +715,12 @@ bool power::cmatch(const ex & pattern, exmap& map) const
 	} 
         if (not is_exactly_a<power>(pattern))
                 return false;
-        if (is_exactly_a<expairseq>(pattern.op(0))) {
-                CMatcher cm(basis, pattern.op(0), map);
-                while (true) {
-                        opt_exmap m = cm.get();
-                        if (not m)
-                                return false;
-                        map = m.value();
-                        if (exponent.cmatch(pattern.op(1), map))
-                                return true;
-                }
-        }
-        return basis.cmatch(pattern.op(0), map)
-                and exponent.cmatch(pattern.op(1), map);
+        CMatcher cm(*this, pattern, map);
+        const opt_exmap& m = cm.get();
+        if (not m)
+                return false;
+        map = m.value();
+        return true;
 }
 
 // from mul.cpp

@@ -15,9 +15,10 @@ using opt_CMatcher = nonstd::optional<CMatcher>;
 
 struct CMatcher {
         CMatcher(const ex &source_, const ex & pattern_, exmap& map_)
-         : source(source_), pattern(pattern_), map(map_) { init(); }
+         : source(source_), pattern(pattern_), map(map_)
+            { ret_val = init(); }
         //~CMatcher() { --level; } 
-        void init();
+        opt_bool init();
         void run();
         void noncomm_run();
         void no_global_wild();
@@ -25,15 +26,20 @@ struct CMatcher {
         opt_exmap get()
         {
                 if (ret_val) {
+                        if (not ret_val.value())
+                                return {};
                         // it was already done in init()
-                        return ret_map;
+                        const exmap& m = ret_map.value();
+                        ret_val.reset();
+                        return m;
                 }
                 ++level;
                 run();    // guarantees to set ret, and if true, map
                 --level;
                 return ret_map;
         }
-        void make_cmatcher(const ex& e, size_t i, exmap& mm);
+        CMatcher& make_cmatcher(const ex& e, size_t i, exmap& mm);
+        bool get_alt(CMatcher& cm);
         void clear_ret()
         {
                 ret_val.reset();
