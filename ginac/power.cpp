@@ -706,6 +706,7 @@ bool power::has(const ex & other, unsigned options) const
 
 bool power::cmatch(const ex & pattern, exmap& map) const
 {
+        //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////sleep(60);
 	if (is_exactly_a<wildcard>(pattern)) {
                 const auto& it = map.find(pattern);
                 if (it != map.end())
