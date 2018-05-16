@@ -58,7 +58,6 @@ inline CMatcher& CMatcher::make_cmatcher(const ex& e, size_t i, exmap& mm)
 {
         exmap m = mm;
         cms[i].emplace(CMatcher(e, pat[i], m));
-        m_finished[i] = bool(cms[i].value().ret_val);
         return cms[i].value();
 }
 
@@ -66,12 +65,7 @@ inline bool CMatcher::get_alt(size_t i)
 {
         if (not m_cmatch[i])
                 return false;
-//        if (not cms[i])
-//                throw std::runtime_error("matching gotcha");
         CMatcher& cm = cms[i].value();
-        if (cm.finished
-            and (not cm.ret_val or not cm.ret_val.value()))
-                return false;
         if (cm.ret_val) {
                 bool ret = cm.ret_val.value();
                 if (ret) {
@@ -81,16 +75,16 @@ inline bool CMatcher::get_alt(size_t i)
                 cm.ret_val.reset();
                 return ret;
         }
+        if (cm.finished)
+                return false;
         bool ret;
+        cm.map_repo[0] = cm.map = map_repo[i];
         const opt_exmap& opm = cm.get();
         ret_map = opm;
         ret_val = ret = opm? true : false;
         cm.clear_ret();
-        m_finished[i] = cm.finished;
         if (not cm.finished)
                 finished = false;
-        if (ret)
-                DEBUG std::cerr<<level<<" cmatch found: "<<opm.value()<<std::endl;
         return ret;
 }
 
@@ -101,6 +95,7 @@ opt_bool CMatcher::init()
 	if (is_exactly_a<wildcard>(pattern)) {
                 DEBUG std::cerr << "pattern is single wildcard"<<std::endl;
                 const auto& it = map.find(pattern);
+                finished = true;
                 if (it != map.end()) {
 		        if (not source.is_equal(ex_to<basic>(it->second)))
                                 return false;
@@ -198,11 +193,13 @@ opt_bool CMatcher::init()
                         }
                 }
                 if (pat.empty()) {
+                        finished = true;
                         ret_map = map;
                         return true;
                 }
         }
         if (wild_ind.empty() and ops.empty() and pat.empty()) {
+                finished = true;
                 ret_map = map;
                 return true;
         }
@@ -212,31 +209,35 @@ opt_bool CMatcher::init()
         N = ops.size();
         P = pat.size();
         size_t len = global_wild? N-1 : P;
-        cms.assign(len, nullopt);
-        map_repo = std::vector<exmap>(P);
-        m_finished.assign(len, false);
-        m_cmatch = std::vector<bool>(len);
+        m_cmatch = std::vector<int>(len);
         std::transform(ops.begin(), ops.end(), m_cmatch.begin(),
-                        [](const ex& e) { return is_func(e); } );
-        for (size_t i=0; i<len; ++i) {
+                        [](const ex& e) { return int(is_func(e)); } );
+        for (size_t i=0; i<len; ++i)
                 cms.emplace_back();
-                if (is_func(ops[i]))
-                        m_cmatch[i] = true;
-        }
-        
+        map_repo = std::vector<exmap>(P);
+
+        finished = false;
         if (is_ncfunc(source)) {
-                size_t i;
-                for (i=0; i<N; ++i) {
-                        if (m_cmatch[i])
-                                break;
-                        if (not ops[i].match(pat[i], map))
-                                return false;
-                }
-                if (i == N) {
+                if (std::all_of(m_cmatch.begin(), m_cmatch.end(),
+                                [](bool b) { return not b; } )) {
+                        finished = true;
+                        for (size_t i=0; i<N; ++i)
+                                if (not ops[i].match(pat[i], map))
+                                        return false;
                         ret_map = map;
+                        DEBUG std::cerr<<"all noncomm matched"<<std::endl;
                         return true;
                 }
                 return nullopt;
+        }
+        finished = false;
+        if (len == 1
+            and not m_cmatch[0]) {
+                ret_val = ops[0].match(pat[0], map);
+                if (ret_val.value())
+                        ret_map = map;
+                finished = true;
+                return ret_val.value();
         }
 
         perm.reserve(len);
@@ -267,33 +268,32 @@ void CMatcher::run()
 
 void CMatcher::noncomm_run()
 {
-        DEBUG std::cerr<<level<<" noncomm_run() entered, N="<<N<<std::endl;
-        int i = P;
-        while (--i > 0) {
-                if (not m_finished[i]
-                    and m_cmatch[i]
-                    and cms[i])
+        DEBUG std::cerr<<level<<" noncomm_run() entered, N="<<N<<", "<<map<<std::endl;
+        int ii = P;
+        while (--ii >= 0) {
+                if (m_cmatch[ii]
+                    and cms[ii]
+                    and not cms[ii].value().finished)
                         break;
         }
         size_t index;
-        if (i >= 0) {
-                index = static_cast<size_t>(i);
-                while (++i < P)
-                        cms[i].reset();
+        if (ii >= 0) {
+                index = static_cast<size_t>(ii);
+                while (unsigned(++ii) < P)
+                        cms[ii].reset();
         }
         else // no cmatcher or all uninitialized
                 index = 0;
-        finished = true;
         // The second loop increases index to get a new ops term
         do {
                 const ex& e = ops[index];
-                DEBUG std::cerr<<level<<" index: "<<index<<", op: "<<e<<std::endl;
                 if (index == 0)
                         map_repo[0] = map;
                 else
                         map_repo[index] = map_repo[index-1];
                 // At this point we try matching p to e 
                 const ex& p = pat[index];
+                DEBUG std::cerr<<level<<" index: "<<index<<", op: "<<e<<", pat: "<<p<<std::endl;
                 if (not m_cmatch[index]) {
                         // normal matching attempt
                         exmap m = map_repo[index];
@@ -303,6 +303,7 @@ void CMatcher::noncomm_run()
                                 DEBUG std::cerr<<level<<" match found: "<<e<<", "<<p<<", "<<m<<": "<<ret<<std::endl; 
                                 continue;
                         }
+                        DEBUG std::cerr<<"match failed"<<std::endl;
                 }
                 else {
                         if (not cms[index])
@@ -313,15 +314,19 @@ void CMatcher::noncomm_run()
                         }
                         if (get_alt(index)) {
                                 map_repo[index] = ret_map.value();
+                                DEBUG std::cerr<<level<<" cmatch found: "<<e<<", "<<p<<", "<<map_repo[index]<<std::endl; 
                                 continue;
                         }
                         cms[index].reset();
+                        DEBUG std::cerr<<"cmatch failed"<<std::endl;
                 }
                 bool alt_solution_found = false;
                 int i = static_cast<int>(index);
                 while (--i >= 0) {
                         if (cms[i]) {
+                           DEBUG std::cerr<<level<<" find alt: "<<i<<std::endl;
                                 cms[i].value().ret_val.reset();
+                                map = map_repo[i];
                                 if (get_alt(i)) {
                                         map_repo[i] = ret_map.value();
                                         index = i;
@@ -345,6 +350,7 @@ void CMatcher::noncomm_run()
                 return;
         }
         finished = true;
+        ret_map.reset();
         ret_val = false;
 }
 
@@ -353,18 +359,18 @@ void CMatcher::no_global_wild()
         DEBUG std::cerr<<level<<" run() entered"<<std::endl;
         // The outer loop goes though permutations of perm
         while (true) {
-                int i = P;
-                while (--i > 0) {
-                        if (not m_finished[i]
-                            and m_cmatch[i]
-                            and cms[i])
+                int ii = P;
+                while (--ii >= 0) {
+                        if (m_cmatch[ii]
+                            and cms[ii]
+                            and not cms[ii].value().finished)
                                 break;
                 }
                 size_t index;
-                if (i >= 0) {
-                        index = static_cast<size_t>(i);
-                        while (++i < P)
-                                cms[i].reset();
+                if (ii >= 0) {
+                        index = static_cast<size_t>(ii);
+                        while (unsigned(++ii) < P)
+                                cms[ii].reset();
                 }
                 else // no cmatcher or all uninitialized
                         index = 0;
@@ -373,13 +379,13 @@ void CMatcher::no_global_wild()
                 // The second loop increases index to get a new ops term
                 do {
                         const ex& e = ops[perm[index]];
-                        DEBUG std::cerr<<level<<" index: "<<index<<", op: "<<e<<std::endl;
                         if (index == 0)
                                 map_repo[0] = map;
                         else
                                 map_repo[index] = map_repo[index-1];
                         // At this point we try matching p to e 
                         const ex& p = pat[index];
+                        DEBUG std::cerr<<level<<" index: "<<index<<", op: "<<e<<", pat: "<<p<<std::endl;
                         if (not m_cmatch[index]) {
                                 // normal matching attempt
                                 exmap m = map_repo[index];
@@ -389,6 +395,7 @@ void CMatcher::no_global_wild()
                                         DEBUG std::cerr<<level<<" match found: "<<e<<", "<<p<<", "<<m<<": "<<ret<<std::endl; 
                                         continue;
                                 }
+                                    DEBUG std::cerr<<"match failed"<<std::endl;
                         }
                         else {
                                 if (not cms[index])
@@ -400,10 +407,12 @@ void CMatcher::no_global_wild()
                                 }
                                 if (get_alt(index)) {
                                         map_repo[index] = ret_map.value();
+                                        DEBUG std::cerr<<level<<" cmatch found: "<<e<<", "<<p<<", "<<map_repo[index]<<std::endl; 
                                         continue;
                                 }
                                 else
                                         cms[index].reset();
+                                DEBUG std::cerr<<"cmatch failed"<<std::endl;
                         }
                         // did we start coroutines in this permutation?
                         bool alt_solution_found = false;
@@ -412,6 +421,7 @@ void CMatcher::no_global_wild()
                                 if (cms[i]) {
                                         DEBUG std::cerr<<level<<" find alt: "<<i<<std::endl;
                                         cms[i].value().ret_val.reset();
+                                        map = map_repo[i];
                                         if (get_alt(i)) {
                                                 map_repo[i] = ret_map.value();
                                                 index = i;
@@ -431,7 +441,8 @@ void CMatcher::no_global_wild()
                         // give back one solution of this cmatch call
                         // possibly still permutations left
                         DEBUG std::cerr<<level<<" send alt: "<<map_repo[P-1]<<std::endl;
-                        finished = false;
+                        finished = not std::next_permutation(perm.begin(),
+                                                perm.end());
                         ret_val = true;
                         ret_map = map_repo[P-1];
                         return;
@@ -446,6 +457,7 @@ void CMatcher::no_global_wild()
                                                 perm.end());
                                 if (not more) {
                                         ret_val = false;
+                                        ret_map.reset();
                                         finished = true;
                                         DEBUG std::cerr<<level<<" perms exhausted"<<std::endl;
                                         return;

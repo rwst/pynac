@@ -3,7 +3,7 @@
 
 #include <vector>
 #include <map>
-
+#include <iostream>
 
 
 namespace GiNaC {
@@ -20,7 +20,13 @@ struct CMatcher_state {
 struct CMatcher {
         CMatcher(const ex &source_, const ex & pattern_, exmap& map_)
          : source(source_), pattern(pattern_), map(map_)
-            { ret_val = init(); finished = bool(ret_val); }
+        {
+                ret_val = init();
+                if (ret_val and not ret_val.value()) {
+                        finished = true;
+                        ret_map.reset();
+                }
+        }
         //~CMatcher() { --level; } 
         opt_bool init();
         void run();
@@ -33,6 +39,7 @@ struct CMatcher {
                         if (not ret_val.value())
                                 return nullopt;
                         ret_val.reset();
+                        return ret_map;
                 }
                 ret_map.reset();
                 ++level;
@@ -59,7 +66,7 @@ struct CMatcher {
         exvector ops, pat;
         std::vector<opt_CMatcher> cms;
         std::vector<exmap> map_repo;
-        std::vector<bool> m_cmatch, m_finished;
+        std::vector<int> m_cmatch;
         bool finished{false}, global_wild{false};
         std::vector<size_t> perm;
         enum Type { unset, comm, noncomm, comm_plus };
