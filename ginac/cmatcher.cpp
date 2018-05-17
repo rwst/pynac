@@ -37,7 +37,7 @@
 
 namespace GiNaC {
 
-static bool debug=true;
+static bool debug=false;
 int CMatcher::level = 0;
 
 inline bool is_ncfunc(const ex& e)
@@ -57,7 +57,7 @@ inline bool is_func(const ex& e)
 inline CMatcher& CMatcher::make_cmatcher(const ex& e, size_t i, exmap& mm)
 {
         exmap m = mm;
-        cms[i].emplace(CMatcher(e, pat[i], m));
+        cms[i].emplace(CMatcher(e, pat[perm[i]], m));
         return cms[i].value();
 }
 
@@ -215,6 +215,10 @@ opt_bool CMatcher::init()
         for (size_t i=0; i<len; ++i)
                 cms.emplace_back();
         map_repo = std::vector<exmap>(P);
+        perm.reserve(len);
+        for (size_t i=0; i<len; ++i) {
+                perm.push_back(i);
+        }
 
         finished = false;
         if (is_ncfunc(source)) {
@@ -240,10 +244,6 @@ opt_bool CMatcher::init()
                 return ret_val.value();
         }
 
-        perm.reserve(len);
-        for (size_t i=0; i<len; ++i) {
-                perm.push_back(i);
-        }
         return nullopt;
 }
 
@@ -260,9 +260,9 @@ void CMatcher::run()
                 return;
         }
 
-        if (global_wild)
-                with_global_wild();
-        else
+//        if (global_wild)
+//                with_global_wild();
+//        else
                 no_global_wild();
 }
 
@@ -324,9 +324,14 @@ void CMatcher::noncomm_run()
                 int i = static_cast<int>(index);
                 while (--i >= 0) {
                         if (cms[i]) {
-                           DEBUG std::cerr<<level<<" find alt: "<<i<<std::endl;
-                                cms[i].value().ret_val.reset();
-                                map = map_repo[i];
+                                if (i == 0)
+                                        map_repo[0] = map;
+                                else
+                                        map_repo[i] = map_repo[i-1];
+                           DEBUG std::cerr<<level<<" find alt: "<<i<<" based on "<<map_repo[i]<<std::endl;
+                                auto& cm = cms[i].value();
+                                cm.ret_val.reset();
+                                cm.map = map_repo[i];
                                 if (get_alt(i)) {
                                         map_repo[i] = ret_map.value();
                                         index = i;
@@ -378,13 +383,13 @@ void CMatcher::no_global_wild()
                 DEBUG { std::cerr<<level<<" ["; for (size_t i:perm) std::cerr<<i<<","; std::cerr<<"]"<<std::endl; }
                 // The second loop increases index to get a new ops term
                 do {
-                        const ex& e = ops[perm[index]];
+                        const ex& e = ops[index];
                         if (index == 0)
                                 map_repo[0] = map;
                         else
                                 map_repo[index] = map_repo[index-1];
                         // At this point we try matching p to e 
-                        const ex& p = pat[index];
+                        const ex& p = pat[perm[index]];
                         DEBUG std::cerr<<level<<" index: "<<index<<", op: "<<e<<", pat: "<<p<<std::endl;
                         if (not m_cmatch[index]) {
                                 // normal matching attempt
@@ -414,14 +419,19 @@ void CMatcher::no_global_wild()
                                         cms[index].reset();
                                 DEBUG std::cerr<<"cmatch failed"<<std::endl;
                         }
-                        // did we start coroutines in this permutation?
+                        // unfinished cmatchers in this permutation?
                         bool alt_solution_found = false;
                         int i = static_cast<int>(index);
                         while (--i >= 0) {
                                 if (cms[i]) {
-                                        DEBUG std::cerr<<level<<" find alt: "<<i<<std::endl;
-                                        cms[i].value().ret_val.reset();
-                                        map = map_repo[i];
+                                        if (i == 0)
+                                                map_repo[0] = map;
+                                        else
+                                                map_repo[i] = map_repo[i-1];
+                                        DEBUG std::cerr<<level<<" find alt: "<<i<<" based on "<<map_repo[i]<<std::endl;
+                                        auto& cm = cms[i].value();
+                                        cm.ret_val.reset();
+                                        cm.map = map_repo[i];
                                         if (get_alt(i)) {
                                                 map_repo[i] = ret_map.value();
                                                 index = i;
@@ -441,7 +451,9 @@ void CMatcher::no_global_wild()
                         // give back one solution of this cmatch call
                         // possibly still permutations left
                         DEBUG std::cerr<<level<<" send alt: "<<map_repo[P-1]<<std::endl;
-                        finished = not std::next_permutation(perm.begin(),
+                        if (std::all_of(cms.begin(), cms.end(),
+                              [](const auto& cm) { return not cm or cm.value().finished; } ))
+                                finished = not std::next_permutation(perm.begin(),
                                                 perm.end());
                         ret_val = true;
                         ret_map = map_repo[P-1];
