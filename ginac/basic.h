@@ -138,7 +138,6 @@ public:
 
 	basic(const archive_node &n, lst &sym_lst);
 	virtual void archive(archive_node &n) const;
-	static ex unarchive(const GiNaC::archive_node &n, GiNaC::lst &sym_lst);
 
 	class visitor {
 	public:

@@ -88,8 +88,6 @@ void power::archive(archive_node &n) const
 	n.add_ex("exponent", exponent);
 }
 
-DEFAULT_UNARCHIVE(power)
-
 //////////
 // functions overriding virtual functions from base classes
 //////////

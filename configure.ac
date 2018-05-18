@@ -133,7 +133,7 @@ AC_CHECK_SIZEOF(void *)
 
 dnl Switch to C++ language mode for the following libraries and headers.
 AC_LANG([C++])
-dnl AX_CXX_COMPILE_STDCXX([17])
+AX_CXX_COMPILE_STDCXX([11], [noext], [mandatory])
 
 dnl Make sure all the necessary standard headers are installed on the system.
 AC_CHECK_HEADER(iosfwd, , GINAC_ERROR([The standard <iosfwd> header file could not be found.]))
