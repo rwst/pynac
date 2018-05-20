@@ -12,6 +12,7 @@ struct CMatcher;
 using opt_exmap = nonstd::optional<exmap>;
 using opt_bool = nonstd::optional<bool>;
 using opt_CMatcher = nonstd::optional<CMatcher>;
+using uvec = std::vector<size_t>;
 using nonstd::nullopt;
 
 struct CMatcher_state {
@@ -27,12 +28,12 @@ struct CMatcher {
                         ret_map.reset();
                 }
         }
-        //~CMatcher() { --level; } 
         opt_bool init();
         void run();
         void noncomm_run();
         void no_global_wild();
         void with_global_wild();
+        void perm_run(const exvector&, const exvector&);
         opt_exmap get()
         {
                 if (ret_val) {
@@ -59,16 +60,14 @@ struct CMatcher {
         ex source, pattern;
         opt_bool ret_val;
         opt_exmap ret_map;
-
-        // the state consists of the following
         exmap map;
-        size_t N{0}, P{0}, last_alt;
-        exvector ops, pat;
+        size_t N{0}, P{0}, wi{0};
+        exvector ops, pat, gws, gwp;
         std::vector<opt_CMatcher> cms;
         std::vector<exmap> map_repo;
-        std::vector<int> m_cmatch;
-        bool finished{false}, global_wild{false};
-        std::vector<size_t> perm;
+        std::vector<bool> m_cmatch;
+        bool finished{false};
+        uvec perm, comb, wild_ind;
         enum Type { unset, comm, noncomm, comm_plus };
         Type type {unset};
 };

@@ -12,18 +12,20 @@
 //       - commutative matching (sums and products, backtracking also in
 //         powers and functions)
 //       - more than two args with noncommutative functions
+//       - one "global wildcard" (x^+) per sum or product
 //
 // TODO:
-//       - one "global wildcard" (i.e. x^+ in a f_C, see basic::match)
+//       - "global wildcard"s (x^+)
 //       - "zero wildcards" (matching superfluous wilds with 0(+) or 1(*)
 //       - constant wildcards (those lacking specified symbols)
 //       - commutative functions
-//       - more than one global wildcard (i.e., fully sequential)
 
 #include "cmatcher.h"
 #include "expairseq.h"
 #include "symbol.h"
 #include "wildcard.h"
+#include "add.h"
+#include "mul.h"
 #include "power.h"
 #include "function.h"
 #include "operators.h"
@@ -37,7 +39,7 @@
 
 namespace GiNaC {
 
-static bool debug=false;
+static bool debug=true;
 int CMatcher::level = 0;
 
 inline bool is_ncfunc(const ex& e)
@@ -91,6 +93,7 @@ inline bool CMatcher::get_alt(size_t i)
 opt_bool CMatcher::init()
 {
         DEBUG std::cerr<<level<<" cmatch: "<<source<<", "<<pattern<<", "<<map<<std::endl;
+        bool global_wild = false;
         const size_t snops = source.nops(), pnops = pattern.nops();
 	if (is_exactly_a<wildcard>(pattern)) {
                 DEBUG std::cerr << "pattern is single wildcard"<<std::endl;
@@ -128,7 +131,6 @@ opt_bool CMatcher::init()
         }
 
         // Chop into terms
-        std::vector<size_t> wild_ind;
         for (size_t i=0; i<snops; i++) {
                 ops.push_back(source.op(i));
         }
@@ -203,29 +205,34 @@ opt_bool CMatcher::init()
                 ret_map = map;
                 return true;
         }
-        if (wild_ind.empty() and (ops.empty() or pat.empty()))
+        if (wild_ind.empty() and ops.empty() or pat.empty())
                 throw std::runtime_error("matching gotcha");
 
         N = ops.size();
         P = pat.size();
-        size_t len = global_wild? N-1 : P;
-        m_cmatch = std::vector<int>(len);
+        m_cmatch.reserve(P);
         std::transform(ops.begin(), ops.end(), m_cmatch.begin(),
-                        [](const ex& e) { return int(is_func(e)); } );
-        for (size_t i=0; i<len; ++i)
+                        [](const ex& e) { return is_func(e); } );
+        if (P == 1
+            and not m_cmatch[0]) {
+                ret_val = ops[0].match(pat[0], map);
+                if (ret_val.value())
+                        ret_map = map;
+                finished = true;
+                DEBUG std::cerr<<"early decision: "<<ret_val.value()<<std::endl;
+                return ret_val.value();
+        }
+        for (size_t i=0; i<P; ++i)
                 cms.emplace_back();
         map_repo = std::vector<exmap>(P);
-        perm.reserve(len);
-        for (size_t i=0; i<len; ++i) {
-                perm.push_back(i);
-        }
 
         finished = false;
         if (is_ncfunc(source)) {
+                type = Type::noncomm;
                 if (std::all_of(m_cmatch.begin(), m_cmatch.end(),
                                 [](bool b) { return not b; } )) {
                         finished = true;
-                        for (size_t i=0; i<N; ++i)
+                        for (size_t i=0; i<P; ++i)
                                 if (not ops[i].match(pat[i], map))
                                         return false;
                         ret_map = map;
@@ -234,36 +241,44 @@ opt_bool CMatcher::init()
                 }
                 return nullopt;
         }
-        finished = false;
-        if (len == 1
-            and not m_cmatch[0]) {
-                ret_val = ops[0].match(pat[0], map);
-                if (ret_val.value())
-                        ret_map = map;
-                finished = true;
-                return ret_val.value();
-        }
 
+        if (global_wild) {
+                type = Type::comm_plus;
+                --P;
+                perm.reserve(P);
+                gws.reserve(P);
+                next_combination(comb, P, N);
+        }
+        if (not global_wild) {
+                type = Type::comm;
+                perm.reserve(P);
+                for (size_t i=0; i<P; ++i)
+                        perm.push_back(i);
+        }
         return nullopt;
 }
 
 void CMatcher::run()
 {
+        clear_ret();
         if (finished or
-            (not is_ncfunc(source) and perm.empty())) {
+            (type == Type::comm and perm.empty())) {
                 ret_val = false;
                 return;
         }
-        clear_ret();
-        if (is_ncfunc(source)) {
-                noncomm_run();
-                return;
+        switch (type) {
+                case Type::noncomm:
+                       noncomm_run();
+                       return;
+                case Type::comm:
+                       no_global_wild();
+                       return;
+                case Type::comm_plus:
+                       with_global_wild();
+                       return;
+                default:
+                       throw std::runtime_error("can't happen");
         }
-
-//        if (global_wild)
-//                with_global_wild();
-//        else
-                no_global_wild();
 }
 
 void CMatcher::noncomm_run()
@@ -362,6 +377,12 @@ void CMatcher::noncomm_run()
 void CMatcher::no_global_wild()
 {
         DEBUG std::cerr<<level<<" run() entered"<<std::endl;
+
+        perm_run(ops, pat);
+}
+
+void CMatcher::perm_run(const exvector& sterms, const exvector& pterms)
+{
         // The outer loop goes though permutations of perm
         while (true) {
                 int ii = P;
@@ -383,13 +404,13 @@ void CMatcher::no_global_wild()
                 DEBUG { std::cerr<<level<<" ["; for (size_t i:perm) std::cerr<<i<<","; std::cerr<<"]"<<std::endl; }
                 // The second loop increases index to get a new ops term
                 do {
-                        const ex& e = ops[index];
+                        const ex& e = sterms[index];
                         if (index == 0)
                                 map_repo[0] = map;
                         else
                                 map_repo[index] = map_repo[index-1];
                         // At this point we try matching p to e 
-                        const ex& p = pat[perm[index]];
+                        const ex& p = pterms[perm[index]];
                         DEBUG std::cerr<<level<<" index: "<<index<<", op: "<<e<<", pat: "<<p<<std::endl;
                         if (not m_cmatch[index]) {
                                 // normal matching attempt
@@ -452,7 +473,7 @@ void CMatcher::no_global_wild()
                         // possibly still permutations left
                         DEBUG std::cerr<<level<<" send alt: "<<map_repo[P-1]<<std::endl;
                         if (std::all_of(cms.begin(), cms.end(),
-                              [](const auto& cm) { return not cm or cm.value().finished; } ))
+                              [](const opt_CMatcher& cm) { return not cm or cm.value().finished; } ))
                                 finished = not std::next_permutation(perm.begin(),
                                                 perm.end());
                         ret_val = true;
@@ -477,13 +498,68 @@ void CMatcher::no_global_wild()
                         }
                 }
         }
-        DEBUG std::cerr<<"noncomm_run() exited"<<std::endl;
+        DEBUG std::cerr<<"comm_run() exited"<<std::endl;
         ret_val = false;
 }
 
+// The case with at least one wildcard term in a sum or product.
+//
+// For all wildcard terms in the pattern, we remove it and define it
+// as the global (so P is now one less); for all combinations of P-1
+// source terms (out of N) the permutation vector is filled with 0,...,P-1
+// Like before, all permutations of those P-1 source terms are matched
+// against the reduced patterns. When matched, those source terms not
+// chosen by the combination combined (+/*) are the solution of the
+// global wildcard.
 void CMatcher::with_global_wild()
 {
-        DEBUG std::cerr<<level<<" gwrun() entered"<<std::endl;
+        DEBUG std::cerr<<level<<" gwrun() entered: "<<P<<" out of "<<N<<std::endl;
+        do {
+                DEBUG std::cerr<<"global: "<<pat[wi]<<std::endl;
+                do {
+                        DEBUG { std::cerr<<level<<" {"; for (size_t i:comb) std::cerr<<i<<","; std::cerr<<"}"<<std::endl; }
+                        if (perm.empty()) { // new combination
+                                for (size_t i=0; i<P; ++i)
+                                        perm.push_back(i);
+                                gwp = pat;
+                                gwp.erase(gwp.begin() + wi);
+                                for (size_t i=0; i<P; ++i)
+                                        gws.push_back(ops[comb[i]]);
+                        }
+
+                        perm_run(gws, gwp);
+
+                        if (ret_val and ret_val.value())
+                        {
+                                ex gwe;
+                                if (is_exactly_a<add>(source))
+                                        gwe = _ex0;
+                                if (is_exactly_a<mul>(source))
+                                        gwe = _ex1;
+                                std::vector<bool> t(P);
+                                t.assign(ops.size(), false);
+                                for (size_t i=0; i<P; ++i)
+                                       t[comb[i]] = true;
+                                if (is_exactly_a<add>(source))
+                                        for (size_t i=0; i<ops.size(); ++i)
+                                                if (not t[i])
+                                                        gwe += ops[i];
+                                if (is_exactly_a<mul>(source))
+                                        for (size_t i=0; i<ops.size(); ++i)
+                                                if (not t[i])
+                                                        gwe *= ops[i];
+                                ret_map.value()[pat[wi]] = gwe;
+                                return;
+                        }
+                        perm.clear();
+                        gwp.clear();
+                        gws.clear();
+                }
+                while (next_combination(comb, P, N));
+        }
+        while (++wi < wild_ind.size());
+        DEBUG std::cerr<<"gwrun() exited"<<std::endl;
+        ret_val = false;
 }
 
 }

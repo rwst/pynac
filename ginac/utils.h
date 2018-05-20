@@ -537,7 +537,7 @@ template <class C>
 int next_combination(std::vector<C>& vec, size_t r, size_t n)
 {
         if (vec.empty()) {
-                for (size_t i=0; i<r; ++r)
+                for (size_t i=0; i<r; ++i)
                         vec.push_back(i);
                 return n>1 and r<n and r>0;
         }
