@@ -39,7 +39,7 @@
 
 namespace GiNaC {
 
-static bool debug=true;
+static bool debug=false;
 int CMatcher::level = 0;
 
 inline bool is_ncfunc(const ex& e)
@@ -205,30 +205,57 @@ opt_bool CMatcher::init()
                 ret_map = map;
                 return true;
         }
-        if (wild_ind.empty() and ops.empty() or pat.empty())
+        if (wild_ind.empty() and (ops.empty() or pat.empty()))
                 throw std::runtime_error("matching gotcha");
 
         N = ops.size();
         P = pat.size();
-        m_cmatch.reserve(P);
+        m_cmatch.assign(P, false);
         std::transform(ops.begin(), ops.end(), m_cmatch.begin(),
                         [](const ex& e) { return is_func(e); } );
-        if (P == 1
-            and not m_cmatch[0]) {
-                ret_val = ops[0].match(pat[0], map);
-                if (ret_val.value())
-                        ret_map = map;
+        if (P == 1) {
+            if (not global_wild) {
+                if (not m_cmatch[0]) {
+                        ret_val = ops[0].match(pat[0], map);
+                        if (ret_val.value())
+                                ret_map = map;
+                        finished = true;
+                        DEBUG std::cerr<<"early decision: "<<ret_val.value()<<std::endl;
+                        return ret_val.value();
+                }
+            }
+            else {
+                // only the global wildcard left
+                DEBUG std::cerr<<"early decision: 1"<<std::endl;
+                ret_val = true;
+                ret_map = map;
+                ex r;
+                if (is_exactly_a<add>(source)) {
+                        r = _ex0;
+                        for (size_t i=0; i<ops.size(); ++i)
+                                r += ops[i];
+                }
+                if (is_exactly_a<mul>(source)) {
+                        r = _ex1;
+                        for (size_t i=0; i<ops.size(); ++i)
+                                r *= ops[i];
+                }
+                ret_map.value()[pat[0]] = r;
                 finished = true;
-                DEBUG std::cerr<<"early decision: "<<ret_val.value()<<std::endl;
-                return ret_val.value();
+                return true;
+            }
         }
         for (size_t i=0; i<P; ++i)
                 cms.emplace_back();
         map_repo = std::vector<exmap>(P);
 
         finished = false;
+        perm.reserve(P);
         if (is_ncfunc(source)) {
                 type = Type::noncomm;
+                // perm is not used but needs to be filled
+                for (size_t i=0; i<P; ++i)
+                        perm.push_back(i);
                 if (std::all_of(m_cmatch.begin(), m_cmatch.end(),
                                 [](bool b) { return not b; } )) {
                         finished = true;
@@ -245,13 +272,11 @@ opt_bool CMatcher::init()
         if (global_wild) {
                 type = Type::comm_plus;
                 --P;
-                perm.reserve(P);
                 gws.reserve(P);
                 next_combination(comb, P, N);
         }
         if (not global_wild) {
                 type = Type::comm;
-                perm.reserve(P);
                 for (size_t i=0; i<P; ++i)
                         perm.push_back(i);
         }
@@ -518,6 +543,7 @@ void CMatcher::with_global_wild()
                 DEBUG std::cerr<<"global: "<<pat[wi]<<std::endl;
                 do {
                         DEBUG { std::cerr<<level<<" {"; for (size_t i:comb) std::cerr<<i<<","; std::cerr<<"}"<<std::endl; }
+                        bool comb_finished = finished = false;
                         if (perm.empty()) { // new combination
                                 for (size_t i=0; i<P; ++i)
                                         perm.push_back(i);
@@ -529,6 +555,13 @@ void CMatcher::with_global_wild()
 
                         perm_run(gws, gwp);
 
+                        if (finished) {
+                                finished = false;
+                                comb_finished = true;
+                                perm.clear();
+                                gwp.clear();
+                                gws.clear();
+                        }
                         if (ret_val and ret_val.value())
                         {
                                 ex gwe;
@@ -549,16 +582,27 @@ void CMatcher::with_global_wild()
                                                 if (not t[i])
                                                         gwe *= ops[i];
                                 ret_map.value()[pat[wi]] = gwe;
+                                finished = false;
+                                if (comb_finished
+                                    and not next_combination(comb, P, N)) {
+                                        comb.clear();
+                                        next_combination(comb, P, N);
+                                        if (not (++wi < wild_ind.size()))
+                                                finished = true;
+                                }
+                                DEBUG std::cerr<<level<<" gw found: "<<ret_map.value()<<std::endl;
                                 return;
                         }
-                        perm.clear();
-                        gwp.clear();
-                        gws.clear();
+                        if (not comb_finished)
+                                continue;
                 }
                 while (next_combination(comb, P, N));
+                comb.clear();
+                next_combination(comb, P, N);
         }
         while (++wi < wild_ind.size());
         DEBUG std::cerr<<"gwrun() exited"<<std::endl;
+        finished = true;
         ret_val = false;
 }
 
