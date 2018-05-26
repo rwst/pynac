@@ -24,6 +24,8 @@
 #include <Python.h>
 #include "py_funcs.h"
 #include "fderivative.h"
+#include "cmatcher.h"
+#include "wildcard.h"
 #include "operators.h"
 #include "archive.h"
 #include "utils.h"
@@ -256,6 +258,25 @@ long fderivative::calchash() const
 		hashvalue = res;
 	}
 	return res;
+}
+
+bool fderivative::match(const ex & pattern, exmap& map) const
+{
+	if (is_exactly_a<wildcard>(pattern)) {
+                const auto& it = map.find(pattern);
+                if (it != map.end())
+		        return is_equal(ex_to<basic>(it->second));
+		map[pattern] = *this;
+		return true;
+	} 
+        if (not is_exactly_a<fderivative>(pattern))
+                return false;
+        CMatcher cm(*this, pattern, map);
+        const opt_exmap& m = cm.get();
+        if (not m)
+                return false;
+        map = m.value();
+        return true;
 }
 
 } // namespace GiNaC

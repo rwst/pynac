@@ -75,6 +75,7 @@ public:
 	ex thiscontainer(std::unique_ptr<exvector> vp) const override;
 	paramset get_parameter_set() const { return parameter_set; };
 	long calchash() const override;
+        bool match(const ex & pattern, exmap& map) const override;
 
 protected:
 	ex derivative(const symbol & s) const override;
