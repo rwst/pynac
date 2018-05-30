@@ -40,7 +40,7 @@
 
 namespace GiNaC {
 
-static bool debug=false;
+static bool debug=true;
 int CMatcher::level = 0;
 
 static bool trivial_match(const ex& s, const ex& pattern, exmap& map)
@@ -265,7 +265,7 @@ opt_bool CMatcher::init()
                 return true;
             }
         }
-        for (size_t i=0; i<P; ++i)
+        for (size_t i=0; i<N; ++i)
                 cms.emplace_back();
         map_repo = std::vector<exmap>(P);
 
