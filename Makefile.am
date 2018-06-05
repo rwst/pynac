@@ -8,7 +8,7 @@ pkgconfig_DATA = pynac.pc
 $(pkgconfig_DATA): config.status
 
 # All the rest of the distributed files
-EXTRA_DIST = pynac.pc pynac.spec
+EXTRA_DIST = pynac.pc pynac.spec CONTRIBUTING.md PACKAGING.md
 
 # Rule to build tar-bzipped distribution package
 $(PACKAGE)-$(VERSION).tar.gz: dist
