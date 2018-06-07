@@ -569,10 +569,10 @@ void CMatcher::with_global_wild()
                 size_t wwi = wild_ind[wi];
                 const wildcard& gw = ex_to<wildcard>(pat[wwi]);
                 size_t ii;
-                for (ii=0; ii<P; ++ii)
+                for (ii=0; ii<P+1; ++ii)
                         if (ii != wwi and haswild(pat[ii], gw))
                                 break;
-                if (ii < P)
+                if (ii < P+1)
                         continue;
 
                 DEBUG std::cerr<<"global: "<<pat[wild_ind[wi]]<<std::endl;
