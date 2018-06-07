@@ -566,17 +566,17 @@ void CMatcher::with_global_wild()
         DEBUG std::cerr<<level<<" gwrun() entered: "<<P<<" out of "<<N<<std::endl;
         do {
                 DEBUG std::cerr<<"global: "<<pat[wild_ind[wi]]<<std::endl;
-                do {
-                        // global wildcard used elsewhere?
-                        size_t wwi = wild_ind[wi];
-                        const wildcard& gw = ex_to<wildcard>(pat[wwi]);
-                        size_t ii;
-                        for (ii=0; ii<P; ++ii)
-                                if (ii != wwi and haswild(pat[ii], gw))
-                                        break;
-                        if (ii < P)
-                                continue;
+                // global wildcard used elsewhere?
+                size_t wwi = wild_ind[wi];
+                const wildcard& gw = ex_to<wildcard>(pat[wwi]);
+                size_t ii;
+                for (ii=0; ii<P; ++ii)
+                        if (ii != wwi and haswild(pat[ii], gw))
+                                break;
+                if (ii < P)
+                        continue;
 
+                do {
                         DEBUG { std::cerr<<level<<" {"; for (size_t i:comb) std::cerr<<i<<","; std::cerr<<"}"<<std::endl; }
                         bool comb_finished = finished = false;
                         if (perm.empty()) { // new combination
