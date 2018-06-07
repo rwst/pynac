@@ -40,7 +40,7 @@
 
 namespace GiNaC {
 
-static bool debug=false;
+static bool debug=true;
 int CMatcher::level = 0;
 
 static bool trivial_match(const ex& s, const ex& pattern, exmap& map)
@@ -567,6 +567,16 @@ void CMatcher::with_global_wild()
         do {
                 DEBUG std::cerr<<"global: "<<pat[wild_ind[wi]]<<std::endl;
                 do {
+                        // global wildcard used elsewhere?
+                        size_t wwi = wild_ind[wi];
+                        const wildcard& gw = ex_to<wildcard>(pat[wwi]);
+                        size_t ii;
+                        for (ii=0; ii<P; ++ii)
+                                if (ii != wwi and haswild(pat[ii], gw))
+                                        break;
+                        if (ii < P)
+                                continue;
+
                         DEBUG { std::cerr<<level<<" {"; for (size_t i:comb) std::cerr<<i<<","; std::cerr<<"}"<<std::endl; }
                         bool comb_finished = finished = false;
                         if (perm.empty()) { // new combination
@@ -722,7 +732,7 @@ void CMatcher::comb_run(const exvector& sterms, const exvector& pterms)
                 if (index >= P) {
                         // give back one solution of this cmatch call
                         // possibly still permutations left
-                        DEBUG std::cerr<<level<<" send alt: "<<map_repo[P-1]<<std::endl;
+                        DEBUG std::cerr<<level<<" send alt: "<<map_repo[comb[P-1]]<<std::endl;
                         size_t i;
                         for (i=0; i<P; ++i)
                                 if (cms[comb[i]]
