@@ -381,6 +381,31 @@ bool ex::is_minus_one() const
         return num.is_minus_one();
 }
 
+bool ex::is_negative_or_minus() const
+{
+        if (is_exactly_a<mul>(*this)
+           and ex_to<mul>(*this).get_overall_coeff().is_negative())
+                return true;
+        return is_negative();
+}
+
+bool ex::is_num_integer() const
+{
+        if (!is_exactly_a<numeric>(*this))
+                return false;
+        const numeric& num = ex_to<numeric>(*this);
+        return num.is_integer();
+}
+
+bool ex::is_num_fraction() const
+{
+        if (!is_exactly_a<numeric>(*this))
+                return false;
+        const numeric& num = ex_to<numeric>(*this);
+        return num.is_mpq();
+}
+
+
 void ex::set_domain(unsigned d)
 {
         if (is_exactly_a<symbol>(*this)) {
@@ -391,6 +416,20 @@ void ex::set_domain(unsigned d)
                 function &f = dynamic_cast<function&>(*bp);
                 f.set_domain(d);
         }
+}
+
+static void _treesize(const ex& e, size_t& n)
+{
+        ++n;
+        for (size_t i=0; i < e.nops(); i++)
+                _treesize(e.op(i), n);
+}
+
+size_t ex::treesize() const
+{
+        size_t n = 0;
+        _treesize(*this, n);
+        return n;
 }
 
 size_t ex::nsymbols() const

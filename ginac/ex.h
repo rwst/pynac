@@ -25,6 +25,7 @@
 
 #include "basic.h"
 #include "ptr.h"
+#include "optional.hpp"
 
 #include <iosfwd>
 #include <iterator>
@@ -80,6 +81,7 @@ using wildset = std::unordered_set<wildcard,wildhasher>;
 using expairvec = std::vector<std::pair<ex,ex>>;
 using ocvector = std::vector<numeric>;
 using power_ocvector_map = std::map<ex, ocvector, GiNaC::ex_is_less>;
+using opt_ex = nonstd::optional<ex>;
 
 /** Lightweight wrapper for GiNaC's symbolic objects.  It holds a pointer to
  *  the other object in order to do garbage collection by the method of
@@ -153,6 +155,7 @@ public:
 
 	// operand access
 	size_t nops() const { return bp->nops(); }
+        size_t treesize() const;
 	size_t nsymbols() const;
         bool get_first_symbol(ex &x) const;
         symbolset symbols() const;
@@ -259,6 +262,9 @@ public:
 	bool is_zero() const;
         bool is_one() const;
         bool is_minus_one() const;
+        bool is_negative_or_minus() const;
+        bool is_num_integer() const;
+        bool is_num_fraction() const;
 	
 	// noncommutativity
 	unsigned return_type() const { return bp->return_type(); }
