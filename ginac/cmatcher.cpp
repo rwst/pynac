@@ -84,8 +84,6 @@ inline bool is_func(const ex& e)
 
 inline bool CMatcher::get_alt(size_t i)
 {
-        if (not m_cmatch[i])
-                return false;
         CMatcher& cm = cms[i].value();
         if (cm.ret_val) {
                 bool ret = cm.ret_val.value();
@@ -99,7 +97,7 @@ inline bool CMatcher::get_alt(size_t i)
         if (cm.finished)
                 return false;
         bool ret;
-        cm.map_repo[0] = cm.map = map_repo[i];
+        cm.map = map_repo[i];
         const opt_exmap& opm = cm.get();
         ret_map = opm;
         ret_val = ret = opm? true : false;
@@ -107,6 +105,11 @@ inline bool CMatcher::get_alt(size_t i)
         if (not cm.finished)
                 finished = false;
         return ret;
+}
+
+CMatcher::~CMatcher()
+{
+        DEBUG std::cerr<<"~"<<level<<" cmatch: "<<source<<", "<<pattern<<", "<<map<<std::endl;
 }
 
 opt_bool CMatcher::init()
@@ -230,8 +233,9 @@ opt_bool CMatcher::init()
         N = ops.size();
         P = pat.size();
         m_cmatch.assign(N, false);
-        std::transform(ops.begin(), ops.end(), m_cmatch.begin(),
-                        [](const ex& e) { DEBUG std::cerr<<e<<": "<<is_func(e)<<std::endl;
+        std::transform(pat.begin(), pat.end(), m_cmatch.begin(),
+                        [](const ex& e) {
+                        DEBUG std::cerr<<e<<": "<<is_func(e)<<std::endl;
                         return is_func(e); } );
         if (P == 1) {
             if (not global_wild) {
@@ -265,6 +269,8 @@ opt_bool CMatcher::init()
                 return true;
             }
         }
+        
+        // completely initialize cmatcher
         for (size_t i=0; i<N; ++i)
                 cms.emplace_back();
         map_repo = std::vector<exmap>(N);
@@ -461,7 +467,8 @@ void CMatcher::perm_run(const exvector& sterms, const exvector& pterms)
                         // At this point we try matching p to e 
                         const ex& p = pterms[perm[index]];
                         DEBUG std::cerr<<level<<" index: "<<index<<", op: "<<e<<", pat: "<<p<<std::endl;
-                        if (not m_cmatch[index]) {
+                        DEBUG std::cerr<<"-------"<<m_cmatch[perm[index]]<<" "<<p<<std::endl;
+                        if (not m_cmatch[perm[index]]) {
                                 // normal matching attempt
                                 exmap m = map_repo[index];
                                 bool ret = trivial_match(e, p, m);
@@ -561,11 +568,19 @@ void CMatcher::perm_run(const exvector& sterms, const exvector& pterms)
 // against the reduced patterns. When matched, those source terms not
 // chosen by the combination combined (+/*) are the solution of the
 // global wildcard.
+//
+// We call comb_run() with the following arguments: a source term vector
+// which contains those P-1 terms the current combination has picked out;
+// and the P-1 pattern terms vector (missing the current global wildcard).
+// comb_run() is nearly the same as perm_run(); we just need to adapt the
+// indices pointing to the respective entries of m_cmatch, cms, and map_repo.
 void CMatcher::with_global_wild()
 {
+        // NOTE: P was decremented earlier
         DEBUG std::cerr<<level<<" gwrun() entered: "<<P<<" out of "<<N<<std::endl;
         do {
-                // global wildcard used elsewhere?
+                // loop through all global wildcards
+                // caveat: is it used elsewhere?
                 size_t wwi = wild_ind[wi];
                 const wildcard& gw = ex_to<wildcard>(pat[wwi]);
                 size_t ii;
@@ -577,6 +592,7 @@ void CMatcher::with_global_wild()
 
                 DEBUG std::cerr<<"global: "<<pat[wild_ind[wi]]<<std::endl;
                 do {
+                        // loop through all combinations
                         DEBUG { std::cerr<<level<<" {"; for (size_t i:comb) std::cerr<<i<<","; std::cerr<<"}"<<std::endl; }
                         bool comb_finished = finished = false;
                         if (perm.empty()) { // new combination
@@ -584,11 +600,13 @@ void CMatcher::with_global_wild()
                                         perm.push_back(i);
                                 gwp = pat;
                                 gwp.erase(gwp.begin() + wild_ind[wi]);
+                                mcm = m_cmatch;
+                                mcm.erase(mcm.begin() + wild_ind[wi]);
                                 for (size_t i=0; i<P; ++i)
                                         gws.push_back(ops[comb[i]]);
                         }
 
-                        comb_run(gws, gwp);
+                        comb_run(gws, gwp, mcm);
 
                         if (finished) {
                                 finished = false;
@@ -641,13 +659,15 @@ void CMatcher::with_global_wild()
         ret_val = false;
 }
 
-void CMatcher::comb_run(const exvector& sterms, const exvector& pterms)
+// sterms[index] == ops[comb[index]]
+void CMatcher::comb_run(const exvector& sterms, const exvector& pterms,
+                const std::vector<bool>& cmneeded)
 {
         // The outer loop goes though permutations of perm
         while (true) {
                 int ii = P;
                 while (--ii >= 0) {
-                        if (m_cmatch[comb[ii]]
+                        if (cmneeded[perm[ii]]
                             and cms[comb[ii]]
                             and not cms[comb[ii]].value().finished)
                                 break;
@@ -672,7 +692,8 @@ void CMatcher::comb_run(const exvector& sterms, const exvector& pterms)
                         // At this point we try matching p to e 
                         const ex& p = pterms[perm[index]];
                         DEBUG std::cerr<<level<<" index: "<<index<<", op: "<<e<<", pat: "<<p<<std::endl;
-                        if (not m_cmatch[comb[index]]) {
+                        DEBUG std::cerr<<"-------"<<cmneeded[perm[index]]<<" "<<p<<std::endl;
+                        if (not cmneeded[perm[index]]) {
                                 // normal matching attempt
                                 exmap m = map_repo[comb[index]];
                                 bool ret = trivial_match(e, p, m);
